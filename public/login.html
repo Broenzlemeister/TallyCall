@@ -1,0 +1,59 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/app.css"><link rel="icon" href="/favicon.svg"><title>Anmelden · Tallycall</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+body { min-height:100vh; display:grid; grid-template-columns:minmax(340px,520px) 1fr; }
+.side { padding:32px clamp(24px,5vw,64px); display:flex; flex-direction:column; justify-content:center; gap:22px; max-width:520px; width:100%; margin:0 auto; }
+.side h1 { font-size:30px; letter-spacing:-.03em; margin:0; } .side form { display:grid; gap:2px; }
+.err { background:#2a1517; border:1px solid #4a2327; color:#ffb3b3; padding:9px 12px; border-radius:var(--r2); font-size:13.5px; }
+.alt { color:var(--mute); font-size:13.5px; }
+.vis { position:relative; overflow:hidden; background:radial-gradient(90% 70% at 70% 20%, #151a2b 0%, #090b10 60%); border-left:1px solid var(--line); display:grid; place-items:center; padding:40px; }
+.vis .lamp { width:86px; padding:16px 0; border-radius:44px; background:#0d0f14; border:1px solid var(--line3); display:grid; gap:14px; justify-items:center; box-shadow:0 30px 80px #000; }
+.vis .lamp i { width:46px; height:46px; border-radius:50%; background:#1a1e27; } .vis .lamp i.r { background:#3a1b1e; } .vis .lamp i.y { background:#3a2f12; } .vis .lamp i.g { background:var(--go); box-shadow:0 0 50px #3fd68f88; }
+.vis .tag { position:absolute; left:40px; bottom:36px; right:40px; font-size:clamp(20px,2.4vw,34px); letter-spacing:-.03em; font-weight:600; line-height:1.15; max-width:16ch; }
+.vis .tag span { color:var(--mute); }
+.vis .bars { position:absolute; left:40px; right:40px; top:40px; display:grid; gap:8px; opacity:.8; }
+.vis .bars div { height:16px; border-radius:6px; background:color-mix(in srgb, var(--c) 30%, #10131a); border-left:3px solid var(--c); }
+@media (max-width:800px) { body { grid-template-columns:1fr; } .vis { display:none; } }
+</style></head>
+<body>
+<main class="side">
+  <div style="display:flex;justify-content:space-between;align-items:center"><a class="brand" href="/"><img src="/logo.svg" alt="">Tallycall</a><select id="langSel" aria-label="Sprache" style="width:auto;padding:5px 26px 5px 10px;font-size:13px"></select></div>
+  <div><h1 id="h">Willkommen zurück</h1><p class="hint" id="sub" style="margin:6px 0 0">Melde dich an, um deine Projekte zu öffnen.</p></div>
+  <div class="err" id="err" hidden></div>
+  <form id="f" novalidate>
+    <div id="nameRow" hidden><label for="name">Name</label><input id="name" autocomplete="name" placeholder="Anna Beispiel"></div>
+    <label for="email">E-Mail</label><input id="email" type="email" autocomplete="email" placeholder="du@beispiel.de" required>
+    <label for="pw">Passwort</label><input id="pw" type="password" autocomplete="current-password" placeholder="mindestens 8 Zeichen" required>
+    <button class="primary lg" id="go" style="margin-top:16px">Anmelden</button>
+  </form>
+  <p class="alt" id="alt"></p>
+</main>
+<aside class="vis" aria-hidden="true">
+  <div class="bars"><div style="--c:#4fd1a1;width:34%"></div><div style="--c:#6ea8ff;width:58%;margin-left:12%"></div><div style="--c:#f5b942;width:26%;margin-left:48%"></div><div style="--c:#b58cff;width:40%;margin-left:30%"></div></div>
+  <div class="lamp"><i class="r"></i><i class="y"></i><i class="g"></i></div>
+  <div class="tag">Jeder Cue zur richtigen Sekunde.<br><span>Ablaufregie für Shows und Events.</span></div>
+</aside>
+<script src="/i18n.js"></script>
+<script>
+const $ = (i) => document.getElementById(i);
+const signup = location.pathname.startsWith("/signup"), next = new URLSearchParams(location.search).get("next");
+let allow = true;
+function paint() {
+  $("h").textContent = signup ? "Konto erstellen" : "Willkommen zurück";
+  $("sub").textContent = signup ? "Starte jetzt. Danach legst du dein erstes Projekt an." : "Melde dich an, um deine Projekte zu öffnen.";
+  $("nameRow").hidden = !signup; $("go").textContent = signup ? "Konto erstellen" : "Anmelden"; $("pw").autocomplete = signup ? "new-password" : "current-password";
+  const q = next ? "?next=" + encodeURIComponent(next) : "";
+  $("alt").innerHTML = signup ? `Schon ein Konto? <a href="/login${q}">Anmelden</a>` : (allow ? `Noch kein Konto? <a href="/signup${q}">Registrieren</a>` : "Die Registrierung ist auf diesem Server geschlossen. Bitte beim Admin um eine Einladung fragen.");
+}
+fetch("/api/config").then((r) => r.json()).then((c) => { allow = c.signup; if (signup && !allow) { $("err").hidden = false; $("err").textContent = "Die Registrierung ist auf diesem Server geschlossen."; $("go").disabled = true; } paint(); }).catch(paint);
+paint();
+$("f").addEventListener("submit", async (e) => {
+  e.preventDefault(); $("err").hidden = true; $("go").disabled = true;
+  try {
+    const r = await fetch("/api/" + (signup ? "signup" : "login"), { method: "POST", headers: { "Content-Type": "application/json", "x-cl": "1" }, body: JSON.stringify({ name: $("name").value, email: $("email").value, password: $("pw").value }) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || "Das hat nicht geklappt");
+    location.href = next && next.startsWith("/") && !next.startsWith("//") ? next : "/app";
+  } catch (err) { $("err").hidden = false; $("err").textContent = err.message; $("go").disabled = false; }
+});
+</script></body></html>

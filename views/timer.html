@@ -1,0 +1,26 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/app.css"><title>Timer</title></head>
+<body class="view"><span class="dot" id="dot"></span>
+<div class="center">
+  <div class="status" id="status"></div>
+  <div class="bigtime" id="time">--:--</div>
+  <div class="bar"><i id="bar"></i></div>
+  <div class="title" id="title" translate="no"></div>
+  <div class="sub" id="sub" translate="no"></div>
+</div>
+<script src="/i18n.js"></script><script src="/shared.js"></script><script src="/common.js"></script><script src="/ui.js"></script>
+<script>
+const $ = (i) => document.getElementById(i);
+CL.onStatus((ok) => $("dot").classList.toggle("on", ok));
+UI.floating("timer");
+CL.run((s) => {
+  const c = CL.current(s), ms = CL.remaining(s), lv = CL.level(s);
+  $("time").textContent = c ? CL.fmt(ms) : "--:--";
+  $("time").className = "bigtime lv-" + (c ? (s.runtime.status === "paused" ? "ok" : lv) : "ok");
+  $("title").textContent = c ? c.title : "Bereit";
+  $("sub").textContent = c ? [c.presenter, c.subtitle].filter(Boolean).join(" · ") : "";
+  $("status").textContent = c ? { running: "läuft", paused: "pausiert", stopped: "geladen" }[s.runtime.status] : "";
+  const total = c ? c.duration * 1000 + s.runtime.added : 0;
+  $("bar").style.width = c && total ? Math.max(0, Math.min(100, (CL.elapsed(s) / total) * 100)) + "%" : "0";
+  $("bar").style.background = c ? c.color : "";
+});
+</script></body></html>

@@ -1,0 +1,22 @@
+# Online-Betrieb mit automatischem HTTPS (Caddy holt das Zertifikat selbst).
+# 1) .env.example nach .env kopieren und ausfüllen  2) docker compose up -d
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment: [ "TALLYCALL_AUTH=on" ]
+    volumes: [ "tallycall-data:/data" ]
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://localhost:4001/api/health" ]
+      interval: 30s
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: [ "80:80", "443:443" ]
+    environment: [ "DOMAIN=${DOMAIN}" ]
+    volumes: [ "./Caddyfile:/etc/caddy/Caddyfile:ro", "caddy-data:/data" ]
+    depends_on: [ app ]
+volumes:
+  tallycall-data:
+  caddy-data:

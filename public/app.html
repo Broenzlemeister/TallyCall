@@ -1,0 +1,62 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/app.css"><link rel="icon" href="/favicon.svg"><title>Projekte · Tallycall</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+.grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px; }
+.proj { display:flex; flex-direction:column; gap:12px; padding:18px; background:var(--bg1); border:1px solid var(--line); border-radius:var(--r); color:var(--fg); text-decoration:none !important; transition:border-color .15s, transform .15s var(--ease), background .15s; min-height:150px; }
+.proj:hover { border-color:var(--line3); background:var(--bg2); transform:translateY(-2px); }
+.proj h2 { font-size:18px; letter-spacing:-.02em; margin:0; } .proj .meta { color:var(--mute); font-size:13px; display:flex; gap:14px; flex-wrap:wrap; margin-top:auto; font-family:var(--mono); }
+.proj .top { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+.new { border-style:dashed; background:transparent; align-items:center; justify-content:center; color:var(--fg2); cursor:pointer; font:inherit; }
+.empty { text-align:center; padding:70px 20px; border:1px dashed var(--line2); border-radius:var(--r); }
+.empty h2 { font-size:22px; margin:0 0 8px; }
+</style></head>
+<body>
+<header class="appbar">
+  <a class="brand" href="/app"><img src="/logo.svg" alt="">Tallycall</a><span class="sp"></span>
+  <select id="langSel" aria-label="Sprache" style="width:auto;padding:5px 26px 5px 10px;font-size:13px"></select><button class="avatar" id="uiUser" title="Konto" translate="no">?</button>
+</header>
+<div class="wrap" style="max-width:1100px">
+  <div class="row2" style="margin:10px 0 18px;justify-content:space-between">
+    <div><h1 style="font-size:26px">Projekte</h1><p class="hint" style="margin:4px 0 0" id="greet"></p></div>
+    <div class="row2"><input id="q" placeholder="Suchen …" style="width:200px" hidden><button class="primary" id="bNew">+ Neues Projekt</button></div>
+  </div>
+  <div id="list" class="grid"></div>
+</div>
+<script src="/i18n.js"></script>
+<script>
+const $ = (i) => document.getElementById(i), E = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const post = async (path, body) => { const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "x-cl": "1" }, body: JSON.stringify(body) }); const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || "Fehler"); return j; };
+const fmt = (d) => d ? new Date(d + "T12:00:00Z").toLocaleDateString(I18N.locale, { timeZone: "UTC" }) : "";
+let me = null, projects = [];
+function toast(m, bad) { document.querySelectorAll(".toast").forEach((t) => t.remove()); const t = document.createElement("div"); t.className = "toast" + (bad ? " bad" : ""); t.textContent = m; document.body.appendChild(t); setTimeout(() => t.remove(), 3500); }
+function modal(title, html, actions) {
+  const bg = document.createElement("div"); bg.className = "modalbg"; bg.innerHTML = `<div class="modal" role="dialog" aria-modal="true"><h2>${E(title)}</h2><div>${html}</div><div class="row2" style="margin-top:16px;justify-content:flex-end"></div></div>`;
+  const close = () => bg.remove(); for (const a of actions) { const b = document.createElement("button"); b.className = "btn " + (a.cls || ""); b.textContent = a.label; b.onclick = () => (a.fn ? a.fn(close, bg) : close()); bg.querySelector(".row2").appendChild(b); }
+  bg.addEventListener("mousedown", (e) => e.target === bg && close()); document.body.appendChild(bg); return bg;
+}
+function draw() {
+  const q = $("q").value.toLowerCase(), list = projects.filter((p) => p.name.toLowerCase().includes(q));
+  $("q").hidden = projects.length < 6;
+  if (!projects.length) { $("list").className = ""; $("list").innerHTML = `<div class="empty"><h2>Dein erstes Projekt</h2><p class="hint" style="max-width:52ch;margin:0 auto 18px">Lege ein Projekt für deine Show an. Mit Beispieldaten siehst du sofort, wie Tage, Gewerke, Cues und Timeline zusammenspielen.</p><button class="primary lg" data-new="1">+ Projekt anlegen</button></div>`; return; }
+  $("list").className = "grid";
+  $("list").innerHTML = list.map((p) => `<a class="proj" href="/p/${E(p.id)}/"><div class="top"><h2 translate="no">${E(p.name)}</h2><span class="badge ${p.role === "admin" ? "" : ""}">${p.role === "admin" ? "Admin" : "Editor"}</span></div>
+    ${p.live ? `<div><span class="badge live"><span class="dot on" style="width:6px;height:6px"></span> ${p.live.status === "running" ? "läuft" : p.live.status === "paused" ? "pausiert" : "geladen"}: <span translate="no">${E(p.live.title)}</span></span></div>` : ""}
+    <div class="meta"><span translate="no">${p.firstDate ? fmt(p.firstDate) + (p.lastDate !== p.firstDate ? " – " + fmt(p.lastDate) : "") : "–"}</span><span>${p.days} ${p.days === 1 ? "Tag" : "Tage"}</span><span>${p.events} Punkte</span><span>${p.members} ${p.members === 1 ? "Mitglied" : "Mitglieder"}</span></div></a>`).join("") + `<button class="proj new" data-new="1"><span style="font-size:26px;line-height:1">+</span>Neues Projekt</button>`;
+}
+function newProject() {
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Berlin";
+  modal("Neues Projekt", `<label style="margin-top:0">Name</label><input id="npName" placeholder="z. B. Sommerfest 2026" autofocus><label>Zeitzone der Show</label><input id="npTz" list="tzs" value="${E(tz)}"><datalist id="tzs"><option>Europe/Berlin<option>Europe/Vienna<option>Europe/Zurich<option>Europe/London<option>America/New_York<option>UTC</datalist>
+    <label class="sw" style="margin-top:14px"><input type="checkbox" id="npSample" ${projects.length ? "" : "checked"}> Mit Beispieldaten starten</label>`,
+    [{ label: "Abbrechen" }, { label: "Anlegen", cls: "primary", fn: async (close, bg) => { try { const r = await post("/api/projects", { name: bg.querySelector("#npName").value, timezone: bg.querySelector("#npTz").value, sample: bg.querySelector("#npSample").checked }); location.href = "/p/" + r.id + "/"; } catch (e) { toast(e.message, true); } } }]);
+}
+function account() {
+  if (me.local) return modal("Lokaler Modus", "<p>Dieser Server läuft ohne Konten. Jeder im Netzwerk hat vollen Zugriff.</p>", [{ label: "Schließen", cls: "primary" }]);
+  modal("Konto", `<p class="hint" style="margin-top:0">${E(me.email)}</p><label>Name</label><input id="acName" value="${E(me.name)}"><label>Aktuelles Passwort</label><input id="acCur" type="password" autocomplete="current-password"><label>Neues Passwort (optional)</label><input id="acNew" type="password" autocomplete="new-password" placeholder="mindestens 8 Zeichen">`,
+    [{ label: "Abmelden", cls: "danger", fn: async () => { await post("/api/logout", {}); location.href = "/"; } }, { label: "Abbrechen" }, { label: "Speichern", cls: "primary", fn: async (close, bg) => {
+      try { const body = { name: bg.querySelector("#acName").value }; const n = bg.querySelector("#acNew").value; if (n) { body.password = n; body.current = bg.querySelector("#acCur").value; } const r = await post("/api/account", body); me = r.user; paintUser(); close(); toast("Gespeichert"); } catch (e) { toast(e.message, true); } } }]);
+}
+function paintUser() { $("uiUser").textContent = (me.name || "?").slice(0, 1).toUpperCase(); $("greet").textContent = me.local ? "Lokaler Modus" : `Angemeldet als ${me.name}`; }
+$("list").addEventListener("click", (e) => { if (e.target.closest("[data-new]")) newProject(); });
+$("bNew").onclick = newProject; $("uiUser").onclick = account; $("q").oninput = draw;
+fetch("/api/me").then(async (r) => { if (r.status === 401) { location.href = "/login?next=/app"; return; } const j = await r.json(); me = j.user; projects = j.projects; paintUser(); draw(); });
+</script></body></html>

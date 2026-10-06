@@ -1,0 +1,131 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/app.css"><title>Bauchbinden</title>
+<style>
+.checker { background:#1a1d24 repeating-conic-gradient(#232731 0 25%, #1a1d24 0 50%) 0 0/28px 28px; }
+.prev { position:relative; aspect-ratio:16/9; border-radius:var(--r); overflow:hidden; border:1px solid var(--line2); }
+.prev canvas { position:absolute; inset:0; width:100%; height:100%; }
+.prev .ph { position:absolute; inset:0; background:linear-gradient(160deg,#2a3142,#10131a 60%); opacity:.9; } .prev.keyed .ph, .prev.checker .ph { display:none; }
+.styles { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
+.sty { padding:0; border:1px solid var(--line2); border-radius:10px; overflow:hidden; background:none; display:block; text-align:left; }
+.sty canvas { width:100%; display:block; aspect-ratio:16/9; background:linear-gradient(160deg,#2a3142,#10131a 60%); } .sty span { display:block; padding:6px 10px; font-size:12.5px; color:var(--fg2); }
+.sty[aria-pressed="true"] { border-color:var(--focus); box-shadow:0 0 0 1px var(--focus); } .sty[aria-pressed="true"] span { color:var(--fg); }
+.sw2 { display:flex; gap:6px; flex-wrap:wrap; align-items:center; } .sw2 button { width:30px; height:30px; border-radius:50%; padding:0; border:2px solid var(--line3); background:var(--c); } .sw2 button[aria-pressed="true"] { border-color:#fff; box-shadow:0 0 0 2px var(--bg); }
+.keys button { display:inline-flex; gap:7px; align-items:center; } .keys i { width:14px; height:14px; border-radius:4px; border:1px solid var(--line3); background:var(--k); }
+.keys button[aria-pressed="true"] { border-color:var(--focus); background:var(--bg4); }
+.lowrow { display:flex; gap:10px; align-items:center; padding:9px 10px; background:var(--bg2); border:1px solid var(--line); border-radius:var(--r2); margin:5px 0; } .lowrow .nm { flex:1; min-width:0; } .lowrow .nm div { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+</style></head>
+<body>
+<header id="appbar"></header>
+<div class="wrap">
+  <div class="cols">
+    <section>
+      <div class="card">
+        <h3>Vorschau</h3>
+        <div class="prev checker" id="prev"><div class="ph"></div><canvas id="cv"></canvas></div>
+        <div class="row2" style="margin-top:12px">
+          <button id="bPlay">▶ Animation ansehen</button>
+          <span style="flex:1"></span>
+          <span class="badge" id="liveBadge">nicht live</span>
+          <button id="bLive" class="go">Einblenden (live)</button><button id="bHide">Ausblenden</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Text</h3>
+        <div class="row2"><div style="flex:1;min-width:220px"><label style="margin-top:0">Titel (Name)</label><input id="fTitle" placeholder="Anna Beispiel"></div><div style="flex:1;min-width:220px"><label style="margin-top:0">Untertitel (Funktion)</label><input id="fSub" placeholder="Keynote Speaker"></div></div>
+        <div class="row2" style="margin-top:12px"><button id="bSave" class="sm">In Liste speichern</button><span class="hint">Gespeicherte Bauchbinden lassen sich im Regie-Pult mit einem Klick einblenden.</span></div>
+      </div>
+      <div class="card">
+        <h3>Stil</h3><div class="styles" id="styles"></div>
+        <div class="row2" style="margin-top:16px;align-items:flex-start;gap:28px">
+          <div><label style="margin-top:0">Position</label><span class="seg" id="pos"><button data-v="left">Links</button><button data-v="center">Mitte</button><button data-v="right">Rechts</button></span></div>
+          <div><label style="margin-top:0">Akzentfarbe</label><div class="sw2" id="accent"></div></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Keying-Hintergrund</h3>
+        <div class="row2 keys" id="keys"></div>
+        <p class="hint" style="margin-bottom:0">Transparent für OBS (Browserquelle) und Mischer mit Alpha. Mit Keying-Farbe füllt die Ausgabe den Hintergrund einfarbig, den du im Mischer (vMix, ATEM, Resolume) per Chroma-Key entfernst. Grün ist üblich, Blau oder Magenta helfen bei grünen Motiven.</p>
+      </div>
+    </section>
+    <aside>
+      <div class="card">
+        <h3>Export</h3>
+        <label style="margin-top:0">Auflösung</label>
+        <select id="res"><option value="3840x2160">4K UHD (3840 × 2160)</option><option value="1920x1080">Full HD (1920 × 1080)</option><option value="7680x4320">8K (7680 × 4320)</option></select>
+        <div class="row2" style="margin-top:14px;flex-direction:column;align-items:stretch">
+          <button id="bPng" class="primary">Als PNG exportieren</button>
+          <button id="bWebm">Animation als WebM exportieren</button>
+        </div>
+        <p class="hint" id="expMsg" style="margin-bottom:0">PNG mit Alpha-Kanal, wenn der Hintergrund transparent ist. WebM enthält Einblenden, Halten und Ausblenden (ca. 4,4 s). Transparenz im Video hängt vom Browser ab, mit Keying-Farbe ist es immer sicher.</p>
+      </div>
+      <div class="card">
+        <h3>Live-Ausgabe</h3>
+        <p class="hint" style="margin-top:0">Als Browserquelle in OBS oder vMix mit 1920 × 1080 einbinden.</p>
+        <button id="bShare" class="sm">Link für OBS/vMix kopieren</button>
+      </div>
+      <div class="card">
+        <h3>Gespeicherte Bauchbinden</h3><div id="list"></div>
+      </div>
+    </aside>
+  </div>
+</div>
+<script src="/i18n.js"></script><script src="/shared.js"></script><script src="/common.js"></script><script src="/ui.js"></script><script src="/lowerthird.js"></script>
+<script>
+const $ = (i) => document.getElementById(i), E = CL.esc, api = (a) => CL.api(a).catch((e) => e.message !== "abgebrochen" && UI.toast(e.message, true));
+UI.bar("grafik");
+const ACCENTS = ["#7c9cff", "#4fd1a1", "#f5b942", "#ff7a7a", "#b58cff", "#ff8fd0", "#5ad6e8", "#ffffff"];
+let cfg = null, p = 1, anim = 0; // cfg = lokale Gestaltung, wird erst mit „Einblenden“ live
+const prev = $("prev"), cv = $("cv"), c2 = cv.getContext("2d");
+
+function fitCanvas() { const r = prev.getBoundingClientRect(), d = window.devicePixelRatio || 1; const w = Math.round(r.width * d), h = Math.round(r.height * d); if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; } }
+function paint() { if (!cfg) return; fitCanvas(); LT.draw(c2, cv.width, cv.height, cfg, p); prev.classList.toggle("checker", cfg.key === "none"); prev.classList.toggle("keyed", cfg.key !== "none"); }
+function thumbs() {
+  $("styles").innerHTML = LT.STYLES.map((s) => `<button class="sty" data-v="${s.id}" aria-pressed="${cfg.style === s.id}"><canvas width="320" height="180"></canvas><span>${s.name}</span></button>`).join("");
+  $("styles").querySelectorAll(".sty").forEach((b, i) => LT.draw(b.querySelector("canvas").getContext("2d"), 320, 180, { title: cfg.title || "Anna Beispiel", subtitle: cfg.subtitle || "Keynote Speaker", style: LT.STYLES[i].id, accent: cfg.accent, pos: cfg.pos === "center" ? "left" : cfg.pos, key: "none" }, 1));
+}
+function controls() {
+  $("pos").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.v === cfg.pos));
+  $("accent").innerHTML = ACCENTS.map((a) => `<button style="--c:${a}" data-v="${a}" aria-pressed="${cfg.accent.toLowerCase() === a}" title="${a}"></button>`).join("") + `<input type="color" id="accentPick" value="${cfg.accent}" title="Eigene Farbe">`;
+  $("keys").innerHTML = LT.KEYS.map((k) => `<button data-v="${k.id}" style="--k:${k.id === "none" ? "transparent" : k.id}" aria-pressed="${cfg.key === k.id}"><i style="${k.id === "none" ? "background:repeating-conic-gradient(#444 0 25%,#222 0 50%) 0 0/8px 8px" : ""}"></i>${k.name}</button>`).join("") + `<input type="color" id="keyPick" value="${cfg.key === "none" ? "#00ff00" : cfg.key}" title="Eigene Keying-Farbe" style="margin-left:6px">`;
+  thumbs(); paint();
+}
+function set(patch) { Object.assign(cfg, patch); controls(); }
+$("fTitle").oninput = () => { cfg.title = $("fTitle").value; paint(); }; $("fSub").oninput = () => { cfg.subtitle = $("fSub").value; paint(); };
+$("fTitle").onchange = $("fSub").onchange = thumbs;
+$("styles").onclick = (e) => { const b = e.target.closest(".sty"); if (b) set({ style: b.dataset.v }); };
+$("pos").onclick = (e) => { const b = e.target.closest("button"); if (b) set({ pos: b.dataset.v }); };
+$("accent").onclick = (e) => { const b = e.target.closest("button"); if (b) set({ accent: b.dataset.v }); };
+$("accent").oninput = (e) => { if (e.target.id === "accentPick") { cfg.accent = e.target.value; thumbs(); paint(); } };
+$("keys").onclick = (e) => { const b = e.target.closest("button"); if (b) set({ key: b.dataset.v }); };
+$("keys").oninput = (e) => { if (e.target.id === "keyPick") { cfg.key = e.target.value; paint(); } };
+$("bPlay").onclick = () => { cancelAnimationFrame(anim); const t0 = performance.now(); (function f(t) { const s = (t - t0) / 1000; p = s < 0.7 ? s / 0.7 : s < 3.2 ? 1 : Math.max(0, 1 - (s - 3.2) / 0.7); paint(); if (s < 3.9) anim = requestAnimationFrame(f); else { p = 1; paint(); } })(t0); };
+const liveCfg = () => ({ title: cfg.title, subtitle: cfg.subtitle, style: cfg.style, pos: cfg.pos, accent: cfg.accent, key: cfg.key });
+$("bLive").onclick = () => api({ type: "lower", data: { ...liveCfg(), visible: true } });
+$("bHide").onclick = () => api({ type: "lower", data: { visible: false } });
+$("bSave").onclick = () => { if (!cfg.title.trim()) return UI.toast("Bitte einen Titel eingeben", true); api({ type: "lowerSave", title: cfg.title, subtitle: cfg.subtitle }).then(() => UI.toast("Gespeichert")); };
+$("bShare").onclick = () => UI.share("lower", {});
+$("list").onclick = (e) => {
+  const b = e.target.closest("[data-a]"); if (!b) return; const id = b.closest("[data-id]").dataset.id, q = CL.state.lowers.find((x) => x.id === id); if (!q) return;
+  if (b.dataset.a === "edit") { cfg.title = q.title; cfg.subtitle = q.subtitle; $("fTitle").value = q.title; $("fSub").value = q.subtitle; thumbs(); paint(); }
+  else if (b.dataset.a === "live") api({ type: "lower", data: { ...liveCfg(), title: q.title, subtitle: q.subtitle, visible: true } });
+  else if (b.dataset.a === "del") api({ type: "lowerDelete", id });
+};
+async function exportWith(kind) {
+  const [w, h] = $("res").value.split("x").map(Number), btn = $(kind === "png" ? "bPng" : "bWebm"), label = btn.textContent;
+  btn.disabled = true; $("expMsg").textContent = "Wird erzeugt …";
+  try {
+    const r = kind === "png" ? await LT.exportPNG(cfg, { w, h }) : await LT.exportWebM(cfg, { w, h, onProgress: (x) => (btn.textContent = `Aufnahme ${Math.round(x * 100)} %`) });
+    $("expMsg").textContent = `${r.name}: ${r.w} × ${r.h}, ${(r.bytes / 1048576).toFixed(1)} MB`; UI.toast("Export fertig");
+  } catch (e) { $("expMsg").textContent = e.message; UI.toast(e.message, true); } finally { btn.disabled = false; btn.textContent = label; }
+}
+$("bPng").onclick = () => exportWith("png"); $("bWebm").onclick = () => exportWith("webm");
+window.addEventListener("resize", paint); document.fonts?.ready.then(() => { thumbs(); paint(); });
+
+let sig = "";
+CL.run((s) => {
+  if (!cfg) { cfg = { title: s.lower.title, subtitle: s.lower.subtitle, style: s.lower.style, pos: s.lower.pos, accent: s.lower.accent, key: s.lower.key }; $("fTitle").value = cfg.title; $("fSub").value = cfg.subtitle; controls(); }
+  const l = s.lower; $("liveBadge").className = "badge" + (l.visible ? " live" : ""); $("liveBadge").textContent = l.visible ? `live: ${l.title || "–"}` : "nicht live";
+  $("bLive").textContent = l.visible ? "Live aktualisieren" : "Einblenden (live)";
+  const html = s.lowers.map((q) => `<div class="lowrow" data-id="${E(q.id)}"><div class="nm" translate="no"><div>${E(q.title)}</div><div class="hint">${E(q.subtitle)}</div></div><button class="sm go" data-a="live">Ein</button><button class="sm" data-a="edit" title="In den Editor laden">✎</button><button class="sm stop" data-a="del">✕</button></div>`).join("") || '<p class="hint">Noch keine gespeichert.</p>';
+  if (html !== sig) { sig = html; $("list").innerHTML = html; }
+});
+</script></body></html>

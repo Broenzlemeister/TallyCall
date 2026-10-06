@@ -1,0 +1,114 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/app.css"><title>Regie</title></head>
+<body>
+<header id="appbar"></header>
+<div class="wrap">
+  <div class="row2" style="margin-bottom:14px">
+    <select id="daySel" style="width:auto;min-width:220px" aria-label="Tag"></select>
+    <span class="mono fg2" id="clock" style="font-size:18px"></span><span class="hint" id="tz"></span>
+    <span style="flex:1"></span>
+    <label class="sw" title="Der Ablauf startet die Punkte automatisch nach der Uhr (Tag mit heutigem Datum)"><input type="checkbox" id="roll"> Roll-Modus (nach Uhr)</label>
+  </div>
+  <div class="cols">
+    <section>
+      <div class="card nowcard">
+        <div class="state"><span id="rState">Nichts geladen</span><span id="rDelay"></span></div>
+        <div class="ttl" id="rTitle" translate="no">–</div>
+        <div class="fg2" id="rSub" translate="no"></div>
+        <div class="tm2 lv-ok" id="rTime">--:--</div>
+        <div class="bar"><i id="rBar"></i></div>
+        <div class="bigbtns">
+          <button class="go" id="bStart">▶ Start</button>
+          <button class="primary big" id="bNext">⏭ Weiter</button>
+          <button id="bPause">⏸ Pause</button><button id="bPrev">⏮ Zurück</button><button id="bStop">⏹ Reset</button>
+          <button data-add="-60000">−1 Min</button><button data-add="60000">+1 Min</button><button data-add="300000">+5 Min</button>
+        </div>
+        <div class="hint">Tasten: Leertaste Start/Pause · Enter oder → weiter · ← zurück</div>
+      </div>
+      <div class="card"><h3>Timeline</h3><div id="miniTl"></div></div>
+      <div class="card"><h3>Cues dieses Punkts</h3><div id="cues"></div></div>
+      <div class="card plan"><h3>Ablauf</h3><div id="plan"></div></div>
+    </section>
+    <aside>
+      <div class="card"><h3>Gewerke bereit?</h3><div class="leds" id="leds"></div>
+        <p style="margin:12px 0 0"><button class="sm" id="readyReset">Alle zurücksetzen</button></p></div>
+      <div class="card"><h3>Bauchbinden</h3><div id="lowers"></div>
+        <div class="row2" style="margin-top:10px"><button class="sm" id="ltHide">Ausblenden</button><a class="btn sm ghost" href="grafik">Gestalten und exportieren →</a></div></div>
+      <div class="card"><h3>Nachricht an Bühne und Gewerke</h3>
+        <textarea id="msgText" rows="2" placeholder="z. B. Bitte Ende in 5 Minuten"></textarea>
+        <div class="row2" style="margin-top:8px"><button id="msgShow" class="go">Anzeigen</button><button id="msgHide">Ausblenden</button></div></div>
+      <div class="card"><h3>Protokoll</h3><div class="logbox" id="log"></div></div>
+    </aside>
+  </div>
+</div>
+<script src="/i18n.js"></script><script src="/shared.js"></script><script src="/common.js"></script><script src="/ui.js"></script><script src="/timeline.js"></script>
+<script>
+const $ = (i) => document.getElementById(i), E = CL.esc, api = (a) => CL.api(a).catch((e) => e.message !== "abgebrochen" && UI.toast(e.message, true));
+UI.bar("regie");
+$("bStart").onclick = () => api({ type: "start", dayId: $("daySel").value });
+$("bPause").onclick = () => api({ type: "pause" });
+$("bStop").onclick = () => api({ type: "stop" });
+$("bNext").onclick = () => api({ type: CL.state.runtime.currentId ? "next" : "start", dayId: $("daySel").value });
+$("bPrev").onclick = () => api({ type: "prev" });
+document.querySelectorAll("[data-add]").forEach((b) => (b.onclick = () => api({ type: "addTime", ms: Number(b.dataset.add) })));
+$("daySel").onchange = () => api({ type: "setDay", dayId: $("daySel").value });
+$("roll").onchange = () => api({ type: "roll", on: $("roll").checked });
+$("readyReset").onclick = () => api({ type: "readyReset" });
+$("msgShow").onclick = () => api({ type: "message", text: $("msgText").value, visible: true });
+$("msgHide").onclick = () => api({ type: "message", text: $("msgText").value, visible: false });
+$("ltHide").onclick = () => api({ type: "lower", data: { visible: false } });
+$("lowers").addEventListener("click", (e) => { const b = e.target.closest("[data-lt]"); if (b) { const q = CL.state.lowers.find((x) => x.id === b.dataset.lt); if (q) api({ type: "lower", data: { title: q.title, subtitle: q.subtitle, visible: true } }); } });
+$("plan").addEventListener("click", (e) => { const b = e.target.closest("[data-start]"); if (b) api({ type: "start", id: b.dataset.start }); });
+document.addEventListener("keydown", (e) => {
+  if (e.target.closest("input,textarea,select")) return;
+  if (e.code === "Space") { e.preventDefault(); api({ type: CL.state.runtime.status === "running" ? "pause" : "start" }); }
+  if (e.key === "Enter" || e.key === "ArrowRight") { e.preventDefault(); $("bNext").click(); }
+  if (e.key === "ArrowLeft") api({ type: "prev" });
+});
+
+const cache = {};
+const setHTML = (id, html) => { if (cache[id] !== html) { $(id).innerHTML = html; cache[id] = html; } };
+const setIfIdle = (el, v) => { if (document.activeElement !== el) el.value = v; };
+const inTxt = (ms) => (ms <= 0 && ms > -4000 ? "JETZT" : CL.fmt(ms, { hours: ms >= 3600000 }));
+const mini = Timeline.create($("miniTl"), { compact: true });
+
+CL.run((s) => {
+  const c = CL.current(s), day = CL.viewDay(s), r = s.runtime;
+  $("clock").textContent = CL.hhmmss(CL.clock(s).sec); $("tz").textContent = s.settings.timezone;
+  setHTML("daySel", s.days.map((d) => `<option translate="no" value="${E(d.id)}"${d.id === day.id ? " selected" : ""}>${E(d.name)} · ${E(d.date.split("-").reverse().join("."))}</option>`).join(""));
+  $("roll").checked = s.settings.roll;
+  $("draftChip") && ($("draftChip").hidden = !s.hasDraft);
+  $("rTitle").textContent = c ? c.title : "Nichts geladen";
+  $("rSub").textContent = c ? [c.presenter, c.subtitle].filter(Boolean).join(" · ") : "Tag wählen und Start drücken";
+  $("rTime").textContent = c ? CL.fmt(CL.remaining(s)) : "--:--";
+  $("rTime").className = "tm2 lv-" + (c && r.status !== "paused" ? CL.level(s) : "ok");
+  $("rState").textContent = (c ? { running: "LÄUFT", paused: "PAUSIERT", stopped: "GELADEN" }[r.status] + (r.added ? ` · Zeit ${CL.signed(r.added / 1000)}` : "") : "BEREIT");
+  const de = CL.dayEnd(s, day);
+  $("rDelay").innerHTML = de ? (de.live ? `<span class="${de.late > 0 ? "late-pos" : "late-neg"}">${Math.abs(de.late) < 5 ? "im Plan" : CL.signed(de.late) + (de.late > 0 ? " hinter Plan" : " vor Plan")}</span> · ` : "") + `Ende ca. ${CL.hhmm(de.end)} (Plan ${CL.hhmm(de.plannedEnd)})` : "";
+  const total = c ? c.duration * 1000 + r.added : 0;
+  $("rBar").style.width = c && total ? Math.max(0, Math.min(100, (CL.elapsed(s) / total) * 100)) + "%" : "0";
+  $("rBar").style.background = c ? c.color : "";
+  $("bStart").textContent = r.status === "paused" ? "▶ Weiter" : "▶ Start";
+  $("bNext").textContent = c ? "⏭ Weiter" : "▶ Ersten Punkt starten";
+  mini.render(s);
+
+  const cl = CL.cues(s, null, 99).all.filter((x) => x.cur);
+  setHTML("cues", c ? (cl.length ? cl.map((x) => { const g = CL.gewerk(x.q.gewerk, s);
+    return `<div class="cue ${x.state}" style="--c:${E(g?.color || "#94a3b8")}"><span class="when">+${CL.fmt(x.q.offset * 1000)}</span><span class="chip" style="--c:${E(g?.color || "#94a3b8")}">${E(g?.short || "–")}</span><span translate="no">${E(x.q.text)}</span><span class="in">${x.state === "done" ? "✓" : inTxt(x.inMs)}</span></div>`; }).join("") : '<p class="hint">Keine Cues bei diesem Punkt.</p>') : '<p class="hint">Noch nichts geladen.</p>');
+
+  const ci = day.events.findIndex((e) => e.id === r.currentId);
+  setHTML("plan", CL.projection(s, day).map((x, i) => {
+    if (x.group) return `<div class="grow" translate="no">${E(x.e.title)}</div>`;
+    const late = Math.abs(x.late) >= 60 ? ` <span class="${x.late > 0 ? "late-pos" : "late-neg"}">${CL.signed(x.late)}</span>` : "";
+    return `<div class="prow ${x.e.id === r.currentId ? "now" : ""} ${ci >= 0 && i < ci ? "past" : ""} ${x.skip ? "skip" : ""}"><div class="c" style="background:${E(x.e.color)}"></div>
+      <div class="mono">${CL.hhmm(x.pStart)}${x.e.start === "fixed" ? " 📌" : ""}${late}</div>
+      <div translate="no">${E(x.e.title)} ${CL.gChips(x.e.cues, s)}<small>${E([x.e.presenter, x.e.subtitle].filter(Boolean).join(" · "))}</small></div>
+      <div class="mono tm">${CL.fmt(x.e.duration * 1000)}</div>
+      <div>${x.skip ? "" : `<button class="sm go" data-start="${E(x.e.id)}" title="Diesen Punkt starten">▶</button>`}</div></div>`; }).join(""));
+
+  setHTML("leds", s.gewerke.map((g) => { const st = s.ready[g.id]?.state || "";
+    return `<div class="led ${st}"><i></i><span class="gn" translate="no"><span class="chip" style="--c:${E(g.color)}">${E(g.short)}</span> ${E(g.name)}</span><small>${st === "ready" ? "bereit" : st === "wait" ? "nicht bereit" : "–"}</small></div>`; }).join(""));
+  setHTML("lowers", (s.lowers.length ? s.lowers.map((q) => `<div class="led"><span class="gn" translate="no">${E(q.title)}<small style="display:block">${E(q.subtitle)}</small></span><button class="sm go" data-lt="${E(q.id)}">Ein</button></div>`).join("") : '<p class="hint">Noch keine gespeichert. Unter „Gestalten und exportieren“ anlegen.</p>') + (s.lower.visible ? `<p class="hint" style="margin:8px 0 0">Gerade live: <b translate="no">${E(s.lower.title)}</b></p>` : ""));
+  setHTML("log", s.log.slice(0, 60).map((l) => `<div><span>${CL.hhmmss(CL.nowParts(l.t, s.settings.timezone).sec)}</span>${E(l.text)}</div>`).join(""));
+  setIfIdle($("msgText"), s.message.text);
+});
+</script></body></html>

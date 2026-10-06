@@ -1,0 +1,33 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/app.css"><title>Bühne</title></head>
+<body class="view"><span class="dot" id="dot"></span>
+<div class="clock-small" id="clock"></div>
+<div class="msg" id="msg" hidden translate="no"></div>
+<div class="center">
+  <div class="title" id="title" translate="no"></div>
+  <div class="bigtime" id="time">--:--</div>
+  <div class="bar"><i id="bar"></i></div>
+  <div class="sub" id="sub" translate="no"></div>
+</div>
+<div class="next"><span><b>Danach</b><span id="next" translate="no">–</span></span><span class="mono" id="end"></span></div>
+<script src="/i18n.js"></script><script src="/shared.js"></script><script src="/common.js"></script><script src="/ui.js"></script>
+<script>
+const $ = (i) => document.getElementById(i);
+CL.onStatus((ok) => $("dot").classList.toggle("on", ok));
+UI.floating("stage");
+CL.run((s) => {
+  const c = CL.current(s), n = CL.upcoming(s), lv = CL.level(s);
+  $("clock").textContent = CL.hhmmss(CL.clock(s).sec);
+  $("time").textContent = c ? CL.fmt(CL.remaining(s)) : "--:--";
+  $("time").className = "bigtime lv-" + (c && s.runtime.status !== "paused" ? lv : "ok");
+  $("title").textContent = c ? c.title : "Bereit";
+  $("sub").textContent = c ? [c.presenter, c.subtitle].filter(Boolean).join(" · ") : "";
+  $("next").textContent = n ? n.title : "–";
+  const de = CL.dayEnd(s);
+  $("end").textContent = de ? "Ende ca. " + CL.hhmm(de.end) : "";
+  const total = c ? c.duration * 1000 + s.runtime.added : 0;
+  $("bar").style.width = c && total ? Math.max(0, Math.min(100, (CL.elapsed(s) / total) * 100)) + "%" : "0";
+  $("bar").style.background = c ? c.color : "";
+  $("msg").hidden = !(s.message.visible && s.message.text);
+  $("msg").textContent = s.message.text;
+});
+</script></body></html>

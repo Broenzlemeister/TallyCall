@@ -1,0 +1,6 @@
+{$DOMAIN} {
+	# flush_interval -1: Live-Updates (Server-Sent Events) sofort durchreichen
+	reverse_proxy app:4001 {
+		flush_interval -1
+	}
+}

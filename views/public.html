@@ -1,0 +1,24 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/app.css"><title>Programm</title></head>
+<body class="view" style="overflow:auto"><span class="dot" id="dot"></span>
+<div class="list"><h1><span id="name" translate="no"></span><span class="mono" id="clock"></span></h1><div id="tabs" class="dayrow" style="margin-bottom:2vh"></div><div id="rows"></div></div>
+<script src="/i18n.js"></script><script src="/shared.js"></script><script src="/common.js"></script><script src="/ui.js"></script>
+<script>
+const $ = (i) => document.getElementById(i);
+CL.onStatus((ok) => $("dot").classList.toggle("on", ok));
+UI.floating("public");
+let last = "", lastTabs = "";
+CL.run((s) => {
+  const day = CL.viewDay(s);
+  $("name").textContent = s.show.name;
+  $("clock").textContent = CL.hhmm(CL.clock(s).sec);
+  const tabs = s.days.map((d) => `<a class="btn sm" translate="no" href="?day=${CL.esc(d.id)}" style="${d.id === day.id ? "border-color:var(--focus)" : ""}">${CL.esc(d.name)} · ${CL.esc(d.date.split("-").reverse().join("."))}</a>`).join("");
+  if (tabs !== lastTabs) { $("tabs").innerHTML = s.days.length > 1 ? tabs : ""; lastTabs = tabs; }
+  const ci = day.events.findIndex((e) => e.id === s.runtime.currentId);
+  const html = CL.projection(s, day).map((x, i) => {
+    if (x.group) return `<div class="gtitle" translate="no">${CL.esc(x.e.title)}</div>`;
+    if (x.skip) return "";
+    return `<div class="row ${x.e.id === s.runtime.currentId ? "now" : ""} ${ci >= 0 && i < ci ? "past" : ""}"><div class="c" style="background:${CL.esc(x.e.color)}"></div>
+    <div class="t">${CL.hhmm(x.pStart)}</div><div translate="no">${CL.esc(x.e.title)}<small>${CL.esc([x.e.presenter, x.e.subtitle].filter(Boolean).join(" · "))}</small></div><div></div></div>`; }).join("");
+  if (html !== last) { $("rows").innerHTML = html; last = html; }
+});
+</script></body></html>

@@ -1,0 +1,31 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/app.css"><title>Bauchbinde</title>
+<style>html,body{background:transparent!important;overflow:hidden;height:100%} body{margin:0} canvas{position:fixed;inset:0;width:100%;height:100%}</style></head>
+<body class="view" style="background:transparent">
+<canvas id="cv"></canvas>
+<script src="/i18n.js"></script><script src="/shared.js"></script><script src="/common.js"></script><script src="/ui.js"></script><script src="/lowerthird.js"></script>
+<script>
+// Live-Bauchbinde: transparent oder mit Keying-Farbe, animiert ein- und ausgeblendet. In OBS/vMix als Browserquelle einbinden.
+const cv = document.getElementById("cv"), c = cv.getContext("2d");
+UI.floating("lower");
+let want = null, p = 0, last = 0, raf = 0;
+function size() { const d = window.devicePixelRatio || 1; cv.width = Math.round(innerWidth * d); cv.height = Math.round(innerHeight * d); paint(); }
+function paint() { if (want) LT.draw(c, cv.width, cv.height, want, p); }
+function loop(t) {
+  const dt = Math.min(0.1, (t - last) / 1000 || 0); last = t;
+  const target = want && want.visible ? 1 : 0, speed = 1 / 0.7;
+  p = target > p ? Math.min(1, p + dt * speed) : Math.max(0, p - dt * speed);
+  paint();
+  raf = p === target ? 0 : requestAnimationFrame(loop);
+}
+const kick = () => { if (!raf) { last = performance.now(); raf = requestAnimationFrame(loop); } };
+window.addEventListener("resize", size);
+document.fonts?.ready.then(paint);
+CL.run((s) => {
+  const l = s.lower, prev = want;
+  if (l.visible || !prev) want = { ...l }; else want = { ...prev, visible: false, key: l.key, style: prev.style }; // beim Ausblenden Inhalt behalten
+  if (!prev) size();
+  if (!!prev?.visible !== !!l.visible || !raf && (p > 0 || l.visible)) kick();
+  if (l.visible && prev && (prev.title !== l.title || prev.subtitle !== l.subtitle || prev.style !== l.style || prev.accent !== l.accent || prev.key !== l.key || prev.pos !== l.pos)) paint();
+  else if (!l.visible && prev && prev.key !== l.key) paint();
+});
+</script></body></html>

@@ -1,0 +1,194 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tallycall – Ablaufregie für Live-Events</title>
+<meta name="description" content="Tallycall plant und steuert Shows über mehrere Tage. Jedes Gewerk bekommt eigene Cues, jeder Screen bleibt im Takt.">
+<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+body { background:var(--bg); }
+.c { width:min(1180px, 100% - 40px); margin:0 auto; }
+nav.top { position:sticky; top:0; z-index:50; background:rgba(6,7,10,.72); backdrop-filter:blur(16px) saturate(1.4); border-bottom:1px solid var(--line); }
+nav.top .c { display:flex; align-items:center; gap:22px; height:62px; }
+nav.top .links { display:flex; gap:22px; margin-left:18px; } nav.top .links a { color:var(--fg2); font-size:14px; } nav.top .links a:hover { color:var(--fg); text-decoration:none; }
+nav.top .sp { flex:1; } nav.top select { width:auto; padding:5px 26px 5px 10px; font-size:13px; background-color:transparent; }
+@media (max-width:860px) { nav.top .links { display:none; } }
+html:is([lang="zh"],[lang="ja"]) h1.hl { letter-spacing:-.01em; line-height:1.1; font-size:clamp(38px,6vw,78px); max-width:18ch; } html:is([lang="zh"],[lang="ja"]) h2.sec { letter-spacing:0; line-height:1.18; }
+section { padding:96px 0; border-top:1px solid var(--line); position:relative; }
+.hero { padding:84px 0 70px; border-top:0; overflow:hidden; }
+.hero::before { content:""; position:absolute; inset:0; background:radial-gradient(60% 50% at 70% 0%, #1b2447 0%, transparent 70%), repeating-linear-gradient(90deg, #ffffff05 0 1px, transparent 1px 88px); mask-image:linear-gradient(#000 40%, transparent); pointer-events:none; }
+.eyebrow-l { display:inline-flex; align-items:center; gap:10px; font-size:12.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--fg2); border:1px solid var(--line2); border-radius:99px; padding:5px 14px 5px 10px; background:var(--bg1); }
+.eyebrow-l i { width:8px; height:8px; border-radius:50%; background:var(--go); box-shadow:0 0 12px var(--go); }
+h1.hl { font-size:clamp(44px, 7.4vw, 96px); line-height:.98; letter-spacing:-.05em; font-weight:600; margin:26px 0 22px; max-width:15ch; }
+.lead { font-size:clamp(17px, 1.7vw, 21px); color:var(--fg2); max-width:56ch; line-height:1.55; }
+.cta { display:flex; gap:12px; flex-wrap:wrap; margin-top:30px; } .cta .btn { padding:13px 22px; font-size:15.5px; border-radius:11px; }
+.small { color:var(--mute); font-size:13.5px; margin-top:16px; }
+h2.sec { font-size:clamp(30px, 4.2vw, 52px); letter-spacing:-.04em; line-height:1.05; margin:14px 0 16px; max-width:20ch; font-weight:600; }
+.kick { color:var(--mute); font-size:12.5px; letter-spacing:.16em; text-transform:uppercase; }
+.two { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.25fr); gap:56px; align-items:center; } .two.rev { grid-template-columns:minmax(0,1.25fr) minmax(0,1fr); }
+@media (max-width:960px) { .two, .two.rev { grid-template-columns:1fr; gap:34px; } .two.rev .txt { order:-1; } }
+.txt p { color:var(--fg2); font-size:17px; max-width:50ch; margin:0 0 14px; } .txt ul { list-style:none; padding:0; margin:18px 0 0; display:grid; gap:10px; max-width:50ch; }
+.txt li { display:flex; gap:12px; color:var(--fg); font-size:15.5px; } .txt li::before { content:""; flex:none; width:7px; height:7px; border-radius:2px; background:var(--focus); margin-top:9px; transform:rotate(45deg); }
+.trio { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-top:44px; } @media (max-width:900px) { .trio { grid-template-columns:1fr; } }
+.tile { background:var(--bg1); border:1px solid var(--line); border-radius:16px; padding:26px; } .tile h3 { font-size:20px; letter-spacing:-.02em; margin:14px 0 8px; font-weight:600; } .tile p { color:var(--fg2); margin:0; font-size:15px; }
+.tile .ico { width:42px; height:42px; border-radius:11px; background:var(--bg3); border:1px solid var(--line2); display:grid; place-items:center; font-size:18px; }
+.tags { display:flex; flex-wrap:wrap; gap:8px; margin-top:34px; } .tags span { border:1px solid var(--line2); background:var(--bg1); color:var(--fg2); border-radius:99px; padding:6px 14px; font-size:13.5px; }
+
+/* Produkt-Mockups */
+.win { background:var(--bg1); border:1px solid var(--line2); border-radius:16px; overflow:hidden; box-shadow:0 40px 100px #000a, 0 0 0 1px #000; }
+.win .bar { display:flex; align-items:center; gap:8px; height:40px; padding:0 14px; border-bottom:1px solid var(--line); background:var(--bg); width:auto; border-radius:0; overflow:visible; }
+.win .bar i { width:10px; height:10px; border-radius:50%; background:var(--line3); } .win .bar b { margin-left:10px; font-weight:500; color:var(--fg2); font-size:12.5px; }
+.win .bar .tabs2 { margin-left:auto; display:flex; gap:14px; font-size:12px; color:var(--mute); } .win .bar .tabs2 .on { color:var(--fg); }
+.mock { padding:16px; display:grid; gap:12px; }
+.tlm { position:relative; display:grid; grid-template-columns:minmax(86px,auto) 1fr; border:1px solid var(--line); border-radius:12px; overflow:hidden; background:var(--bg1); font-size:11px; }
+.tlm .lab { border-right:1px solid var(--line2); } .tlm .lab div { display:flex; align-items:center; padding:0 10px; height:34px; border-bottom:1px solid var(--line); color:var(--fg2); gap:6px; white-space:nowrap; overflow:hidden; } .tlm .lab div.t { height:24px; }
+.tlm .cv { position:relative; background:repeating-linear-gradient(90deg, var(--line) 0 1px, transparent 1px 12.5%); }
+.tlm .row { position:relative; height:34px; border-bottom:1px solid var(--line); } .tlm .row.t { height:24px; } .tlm .row.e { height:46px; } .tlm .lab div.e { height:46px; }
+.tlm .t span { position:absolute; top:6px; font:10px var(--mono); color:var(--mute); padding-left:4px; border-left:1px solid var(--line3); }
+.tlm .b { position:absolute; top:6px; bottom:6px; border-radius:7px; border-left:3px solid var(--c); background:color-mix(in srgb, var(--c) 22%, var(--bg2)); padding:3px 7px; font-weight:600; font-size:11px; white-space:nowrap; overflow:hidden; }
+.tlm .b small { display:block; font:400 9.5px var(--mono); color:var(--fg2); } .tlm .b .fill { position:absolute; inset:0 auto 0 0; background:color-mix(in srgb, var(--c) 40%, transparent); }
+.tlm .d { position:absolute; top:50%; width:10px; height:10px; transform:translate(-50%,-50%) rotate(45deg); border-radius:2px; background:var(--c); box-shadow:0 0 0 2px var(--bg1); } .tlm .d.done { opacity:.3; }
+.tlm .dl { position:absolute; top:50%; transform:translateY(-50%); color:var(--fg2); font-size:10px; white-space:nowrap; }
+.tlm .now { position:absolute; top:0; bottom:0; width:2px; background:var(--stop); box-shadow:0 0 12px #ff5d5d99; z-index:3; } .tlm .now::before { content:"09:14:32"; position:absolute; top:0; left:50%; transform:translateX(-50%); background:var(--stop); color:#fff; font:600 9.5px var(--mono); padding:1px 5px; border-radius:0 0 5px 5px; }
+.tlm .pb { position:absolute; top:5px; bottom:5px; border:1px solid #ff5d5d99; border-radius:4px; color:var(--stop); font:9.5px var(--mono); padding:0 5px; display:flex; align-items:center; background:#ff5d5d12; }
+.timercard { display:grid; grid-template-columns:1.1fr 1fr; gap:12px; } @media (max-width:640px) { .timercard { grid-template-columns:1fr; } }
+.tc { background:var(--bg); border:1px solid var(--line); border-radius:12px; padding:16px; } .tc small { color:var(--mute); letter-spacing:.06em; font-size:10.5px; } .tc .big2 { font:500 54px/1 var(--mono); letter-spacing:-.05em; margin:8px 0 10px; color:var(--warn); text-shadow:0 0 30px #f5b94244; } .tc .pg { height:6px; border-radius:9px; background:var(--bg3); overflow:hidden; } .tc .pg i { display:block; height:100%; width:82%; background:#6ea8ff; }
+.tc .t2 { font-size:15px; font-weight:600; margin-top:6px; } .btnrow { display:flex; gap:6px; margin-top:12px; } .btnrow span { padding:5px 10px; border-radius:7px; background:var(--bg3); border:1px solid var(--line2); font-size:11px; } .btnrow .g { background:var(--go); color:#052416; border-color:var(--go); font-weight:600; } .btnrow .w { background:var(--fg); color:#0a0c10; border-color:var(--fg); font-weight:600; }
+.cq { display:grid; gap:5px; } .cq div { display:grid; grid-template-columns:auto 1fr auto; gap:8px; align-items:center; padding:6px 9px; border-radius:8px; background:var(--bg); border:1px solid var(--line); border-left:3px solid var(--c); font-size:11px; } .cq div.sb { border-color:var(--warn); background:#1c1708; } .cq div.go { background:var(--go); color:#052416; border-color:var(--go); } .cq b { font:600 10px var(--sans); background:var(--c); color:#0a0c10; padding:0 5px; border-radius:4px; } .cq i { font:600 11px var(--mono); font-style:normal; }
+.gewerkscr { background:var(--bg); border:1px solid var(--line2); border-radius:16px; padding:24px; display:grid; gap:14px; box-shadow:0 40px 100px #000a; }
+.gewerkscr .h { display:flex; justify-content:space-between; align-items:baseline; border-bottom:1px solid var(--line2); padding-bottom:10px; } .gewerkscr h4 { margin:0; font-size:26px; color:#f5b942; display:flex; align-items:center; gap:10px; letter-spacing:-.03em; } .gewerkscr h4::before { content:""; width:12px; height:12px; border-radius:50%; background:#f5b942; box-shadow:0 0 18px #f5b942; }
+.gewerkscr .nx { background:var(--go); color:#052416; border-radius:14px; padding:20px; } .gewerkscr .nx small { display:block; opacity:.8; } .gewerkscr .nx b { display:block; font-size:30px; letter-spacing:-.03em; margin:4px 0; } .gewerkscr .nx .cd2 { font:500 62px/1 var(--mono); letter-spacing:-.05em; }
+.rd { display:grid; grid-template-columns:1fr 1fr; gap:10px; } .rd span { padding:12px; border-radius:11px; text-align:center; background:var(--bg3); border:1px solid var(--line2); font-weight:600; } .rd span.on { background:var(--go); color:#052416; border-color:var(--go); }
+.dbar { background:#211a08; border:1px solid #5a4417; border-radius:12px; padding:11px 14px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; font-size:13px; } .dbar b { color:var(--warn); letter-spacing:.06em; font-size:11.5px; } .dbar .g { margin-left:auto; background:var(--go); color:#052416; padding:5px 12px; border-radius:7px; font-weight:600; }
+.diff { display:grid; gap:4px; font-size:13px; margin-top:12px; } .diff .a { color:var(--go); } .diff .c { color:var(--warn); } .diff .d { color:var(--stop); }
+.lts { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; } @media (max-width:700px) { .lts { grid-template-columns:repeat(2,1fr); } }
+.lt1 { aspect-ratio:16/9; border-radius:12px; border:1px solid var(--line2); background:linear-gradient(160deg,#2a3142,#10131a 60%); position:relative; overflow:hidden; } .lt1 .l { position:absolute; left:8%; bottom:14%; font-size:11px; line-height:1.25; } .lt1 .l b { display:block; font-size:13px; } .lt1 .l span { opacity:.78; }
+.lt1.k { background:#00c800; } .lt1.k2 { background:#1f3dff; }
+.ls-balken .l { background:#0a0c10f2; border-left:5px solid #7c9cff; padding:7px 10px; } .ls-glas .l { background:#10141cb0; border:1px solid #ffffff3c; border-radius:9px; padding:7px 11px; backdrop-filter:blur(4px); } .ls-linie .l { border-top:3px solid #4fd1a1; padding-top:6px; text-shadow:0 1px 6px #000; }
+.ls-karte .l { background:#f5f6f8; color:#0b0d11; border-radius:8px; padding:7px 11px 7px 14px; border-left:6px solid #f5b942; box-shadow:0 8px 20px #0008; } .ls-block .l { transform:skewX(-10deg); } .ls-block .l b { background:#b58cff; color:#0b0d11; padding:6px 12px; } .ls-block .l span { display:block; background:#0a0c10; padding:3px 12px; margin-left:8px; }
+.ls-streifen .l { left:0; right:0; bottom:0; padding:9px 8%; background:#080a0ef2; border-top:3px solid #ff7a7a; }
+.share { background:var(--bg); border:1px solid var(--line2); border-radius:14px; padding:14px; display:grid; gap:7px; box-shadow:0 30px 80px #000a; } .share .it { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:9px; font-size:13px; } .share .it:hover { background:var(--bg3); } .share .it span.n { flex:1; } .share .it em { font-style:normal; border:1px solid var(--line3); background:var(--bg3); border-radius:6px; padding:1px 9px; font-size:11.5px; color:var(--fg2); }
+.roles { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:20px; } .roles .tile { padding:18px; } .roles h3 { margin-top:0; }
+.deploy { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:40px; } @media (max-width:800px) { .deploy, .roles { grid-template-columns:1fr; } }
+.deploy pre { margin:16px 0 0; background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:14px; font:13px/1.6 var(--mono); color:var(--fg2); overflow:auto; }
+.faq { margin-top:30px; display:grid; gap:10px; max-width:820px; } .faq details { background:var(--bg1); border:1px solid var(--line); border-radius:12px; padding:16px 20px; } .faq summary { cursor:pointer; font-weight:600; font-size:16px; list-style:none; display:flex; justify-content:space-between; gap:14px; } .faq summary::after { content:"+"; color:var(--mute); font-size:20px; line-height:1; } .faq details[open] summary::after { content:"–"; } .faq p { color:var(--fg2); margin:12px 0 0; }
+.final { text-align:center; padding:110px 0; } .final h2 { margin:0 auto 18px; max-width:16ch; font-size:clamp(34px,5vw,64px); } .final .cta { justify-content:center; }
+footer { border-top:1px solid var(--line); padding:34px 0 50px; color:var(--mute); font-size:13.5px; } footer .c { display:flex; gap:24px; flex-wrap:wrap; align-items:center; } footer a { color:var(--fg2); } footer .sp { flex:1; }
+</style></head>
+<body>
+<nav class="top"><div class="c">
+  <a class="brand" href="/"><img src="/logo.svg" alt="">Tallycall</a>
+  <div class="links"><a href="#funktionen">Funktionen</a><a href="#timeline">Timeline</a><a href="#gewerke">Gewerke</a><a href="#bauchbinden">Bauchbinden</a><a href="#betrieb">Betrieb</a><a href="#faq">FAQ</a></div>
+  <span class="sp"></span>
+  <select id="langSel" aria-label="Sprache" translate="no"></select>
+  <a class="btn ghost" href="/login">Anmelden</a><a class="btn primary" href="/signup">Jetzt starten</a>
+</div></nav>
+
+<header class="hero"><div class="c" style="position:relative">
+  <span class="eyebrow-l"><i></i>Ablaufregie für Live-Events</span>
+  <h1 class="hl">Jeder Cue zur richtigen Sekunde.</h1>
+  <p class="lead">Tallycall plant und steuert Shows über mehrere Tage. Jedes Gewerk bekommt seine eigenen Cues, jeder Screen bleibt im Takt, und du siehst immer, ob ihr im Plan seid.</p>
+  <div class="cta"><a class="btn primary" href="/signup">Jetzt starten</a><a class="btn" href="#funktionen">So funktioniert es</a></div>
+  <p class="small">Läuft im Browser. Lokal im eigenen Netzwerk oder online mit Konto.</p>
+  <div class="win" style="margin-top:56px" aria-hidden="true">
+    <div class="bar"><i></i><i></i><i></i><b translate="no">Tallycall / Gala 2026</b><span class="tabs2"><span class="on">Regie</span><span>Timeline</span><span>Planung</span><span>Bauchbinden</span><span>Gewerke</span></span></div>
+    <div class="mock">
+      <div class="tlm"><div class="lab"><div class="t"></div><div class="e">Ablauf</div><div style="font-size:10px;color:var(--mute)">Prognose</div><div><span class="chip" style="--c:#f5b942">LX</span>Licht</div><div><span class="chip" style="--c:#4fd1a1">AU</span>Ton</div><div><span class="chip" style="--c:#6ea8ff">VI</span>Video</div></div>
+        <div class="cv"><div class="now" style="left:41%"></div>
+          <div class="row t"><span style="left:0">09:00</span><span style="left:25%">09:15</span><span style="left:50%">09:30</span><span style="left:75%">09:45</span></div>
+          <div class="row e"><div class="b" style="--c:#4fd1a1;left:1%;width:16%">Einlass<small>10:00</small></div><div class="b" style="--c:#6ea8ff;left:18%;width:40%">Keynote<small>30:00</small><i class="fill" style="width:62%"></i></div><div class="b" style="--c:#f5b942;left:59%;width:20%">Pause<small>15:00</small></div><div class="b" style="--c:#b58cff;left:80%;width:19%">Podium<small>10:00</small></div></div>
+          <div class="row" style="height:24px"><div class="pb" style="left:18%;width:42%">+1:20</div><div class="pb" style="left:61%;width:20%">+1:20</div></div>
+          <div class="row"><i class="d done" style="--c:#f5b942;left:18%"></i><span class="dl" style="left:19.5%">Cue 2 Keynote-Look</span><i class="d" style="--c:#f5b942;left:52%"></i><span class="dl" style="left:53.5%">Cue 3 Applaus</span><i class="d" style="--c:#f5b942;left:60%"></i></div>
+          <div class="row"><i class="d done" style="--c:#4fd1a1;left:18%"></i><i class="d" style="--c:#4fd1a1;left:58%"></i><span class="dl" style="left:59.5%">Outro-Musik</span><i class="d" style="--c:#4fd1a1;left:84%"></i></div>
+          <div class="row"><i class="d done" style="--c:#6ea8ff;left:18%"></i><i class="d" style="--c:#6ea8ff;left:55%"></i><span class="dl" style="left:56.5%">Outro-Loop</span></div>
+        </div></div>
+      <div class="timercard"><div class="tc"><small>LÄUFT · +1:20 hinter Plan</small><div class="t2">Keynote</div><div class="big2">02:14</div><div class="pg"><i></i></div><div class="btnrow"><span class="g">▶ Start</span><span class="w">⏭ Weiter</span><span>⏸ Pause</span><span>+1 Min</span></div></div>
+        <div class="cq"><div style="--c:#f5b942" class="sb"><b>LX</b><span>Cue 3: Applaus-Look</span><i style="color:var(--warn)">00:08</i></div><div style="--c:#4fd1a1"><b>AU</b><span>Outro-Musik</span><i>01:20</i></div><div style="--c:#6ea8ff"><b>VI</b><span>Outro-Loop starten</span><i>01:35</i></div><div style="--c:#b58cff"><b>BÜ</b><span>Podium umbauen</span><i>02:14</i></div></div></div>
+    </div>
+  </div>
+  <div class="tags"><span>Konferenzen</span><span>Galas</span><span>Messen</span><span>Theater</span><span>Livestreams</span><span>Tourneen</span></div>
+</div></header>
+
+<section id="funktionen"><div class="c">
+  <span class="kick">Der ganze Ablauf</span>
+  <h2 class="sec">Planen, steuern, ausspielen.</h2>
+  <div class="trio">
+    <div class="tile"><div class="ico">◫</div><h3>Planen</h3><p>Mehrere Tage mit Datum und Beginn. Punkte laufen nacheinander oder starten zu einer festen Uhrzeit. Überschneidungen siehst du sofort.</p></div>
+    <div class="tile"><div class="ico">▶</div><h3>Steuern</h3><p>Ein Regie-Pult mit Timer, Verzug zum Plan und voraussichtlichem Ende. Auf Wunsch startet der Roll-Modus die Punkte nach der Uhr.</p></div>
+    <div class="tile"><div class="ico">◧</div><h3>Ausspielen</h3><p>Timer, Bühne, Backstage, Publikum, Uhr und Bauchbinden als eigene Screens. Alle bleiben live synchron.</p></div>
+  </div>
+</div></section>
+
+<section id="timeline"><div class="c two">
+  <div class="txt"><span class="kick">Timeline</span><h2 class="sec">Der Ablauf als Balken.</h2>
+    <p>Jeder Punkt ist ein Balken auf der Zeitachse. Darunter laufen die Gewerke in eigenen Spuren mit ihren Cues als Marker.</p>
+    <ul><li>Jetzt-Linie, Fortschritt und Prognose bei Verzug</li><li>Zoom bis auf Sekunden, Ansicht über alle Tage</li><li>Balkenenden und Cues per Maus ziehen</li><li>Feste Uhrzeiten und Überschneidungen sichtbar</li></ul></div>
+  <div class="win" aria-hidden="true"><div class="bar"><i></i><i></i><i></i><b>Timeline</b></div><div class="mock"><div class="tlm"><div class="lab"><div class="t"></div><div>Tag 1</div><div>Tag 2</div><div>Tag 3</div></div>
+    <div class="cv"><div class="row t"><span style="left:0">09:00</span><span style="left:25%">11:00</span><span style="left:50%">13:00</span><span style="left:75%">15:00</span></div>
+      <div class="row"><div class="b" style="--c:#6ea8ff;left:2%;width:24%">Konferenz</div><div class="b" style="--c:#f5b942;left:27%;width:12%">Mittag</div><div class="b" style="--c:#b58cff;left:40%;width:40%">Podium &amp; Panels</div></div>
+      <div class="row"><div class="b" style="--c:#4fd1a1;left:8%;width:30%">Workshops A</div><div class="b" style="--c:#f5b942;left:39%;width:14%">Mittag</div><div class="b" style="--c:#4fd1a1;left:54%;width:32%">Workshops B</div></div>
+      <div class="row"><div class="b" style="--c:#ff7a7a;left:20%;width:50%">Finale &amp; Abendgala</div></div></div></div></div></div>
+</div></section>
+
+<section id="gewerke"><div class="c two rev">
+  <div class="gewerkscr" aria-hidden="true"><div class="h"><h4>Licht</h4><span class="mute mono">09:14:32</span></div>
+    <div class="nx"><small>Nächster Cue · Keynote · 09:40:00</small><b>Cue 3: Applaus-Look</b><div class="cd2">JETZT</div></div>
+    <div class="cue" style="--c:#f5b942"><span class="when mono">09:55</span><span class="chip" style="--c:#f5b942">LX</span><span>Cue 4: Pausenlicht</span><span class="in mono">15:12</span></div>
+    <div class="rd"><span class="on">✔ Bereit</span><span>✖ Nicht bereit</span></div></div>
+  <div class="txt"><span class="kick">Gewerke</span><h2 class="sec">Jedes Gewerk sieht seinen Cue.</h2>
+    <p>Licht, Ton, Video, Bühne, Catering: Du legst die Gewerke an, jeder Punkt bekommt Cues pro Gewerk. Die Crew öffnet nur ihren Screen und sieht den nächsten Cue mit Countdown.</p>
+    <ul><li>Standby und JETZT sind unübersehbar</li><li>Die Crew meldet Bereit oder Nicht bereit</li><li>Die Regie sieht alle Gewerke auf einen Blick</li></ul></div>
+</div></section>
+
+<section id="vorschau"><div class="c two">
+  <div class="txt"><span class="kick">Vorschau-Modus</span><h2 class="sec">Ändern, ohne die Show zu stören.</h2>
+    <p>Im Vorschau-Modus gehen alle Änderungen in einen Entwurf. Die laufende Show bleibt unberührt. Erst wenn du bereit bist, schaltest du live.</p>
+    <ul><li>Entwurf in Backstage, Timeline und Gewerken ansehen</li><li>Liste aller Änderungen vor dem Live-Schalten</li><li>Jederzeit verwerfen</li></ul></div>
+  <div><div class="dbar" aria-hidden="true"><b>VORSCHAU-MODUS</b><span>3 Änderungen noch nicht live</span><span class="g">▲ Live schalten</span></div>
+    <div class="share" style="margin-top:12px" aria-hidden="true"><div class="diff"><span class="c">~ <i style="font-style:normal">Geändert: Keynote</i></span><span class="a">＋ <i style="font-style:normal">Neu: Umbau Bühne</i></span><span class="d">− <i style="font-style:normal">Gelöscht: Interview</i></span></div></div></div>
+</div></section>
+
+<section id="bauchbinden"><div class="c">
+  <span class="kick">Bauchbinden</span><h2 class="sec">Sechs Stile, eigene Keying-Farbe, Export in 4K.</h2>
+  <p class="lead" style="margin-bottom:34px">Gestalte Namenseinblendungen mit Live-Vorschau und blende sie aus dem Regie-Pult ein. Für Mischer und Streaming-Software wählst du Transparenz oder eine Keying-Farbe.</p>
+  <div class="lts" aria-hidden="true">
+    <div class="lt1 ls-balken"><div class="l"><b translate="no">Anna Beispiel</b><span>Keynote Speaker</span></div></div>
+    <div class="lt1 ls-glas"><div class="l"><b translate="no">Ben Muster</b><span>Moderation</span></div></div>
+    <div class="lt1 ls-linie"><div class="l"><b translate="no">Carla Sommer</b><span>Technische Leitung</span></div></div>
+    <div class="lt1 ls-karte k"><div class="l"><b translate="no">Dev Kumar</b><span>Gast</span></div></div>
+    <div class="lt1 ls-block k2"><div class="l"><b translate="no">Eva Lindt</b><span>Produktion</span></div></div>
+    <div class="lt1 ls-streifen"><div class="l"><b>Podium</b><span>Mit vier Gästen</span></div></div>
+  </div>
+  <div class="tags"><span>Transparent</span><span>Grün</span><span>Blau</span><span>Magenta</span><span>Eigene Farbe</span><span>PNG in 4K</span><span>WebM-Animation</span></div>
+</div></section>
+
+<section id="teilen"><div class="c two rev">
+  <div class="share" aria-hidden="true"><div class="it"><span class="n">Timer</span><em>Link kopieren</em></div><div class="it"><span class="n">Bühne</span><em>Link kopieren</em></div><div class="it"><span class="n">Backstage</span><em>Link kopieren</em></div><div class="it"><span class="n">Timeline</span><em>Link kopieren</em></div><div class="it"><span class="n"><span class="chip" style="--c:#f5b942">LX</span> Licht</span><em>Link kopieren</em></div><div class="it"><span class="n"><span class="chip" style="--c:#4fd1a1">AU</span> Ton</span><em>Link kopieren</em></div></div>
+  <div class="txt"><span class="kick">Teilen und Rollen</span><h2 class="sec">Ein Link pro Screen. Eine Rolle pro Person.</h2>
+    <p>Jeder Screen und jedes Gewerk lässt sich mit einem Klick teilen. Wer den Link hat, sieht die Ansicht ohne Konto. Du kannst Links jederzeit widerrufen.</p>
+    <div class="roles"><div class="tile"><h3>Admin</h3><p>Verwaltet Mitglieder, Freigaben und Einstellungen eines Projekts.</p></div><div class="tile"><h3>Editor</h3><p>Plant, steuert die Show und erstellt Freigabe-Links.</p></div></div>
+    <p style="margin-top:16px">Ein Konto kann in mehreren Projekten arbeiten, mit je eigener Rolle. Jede Änderung landet im Aktivitätsprotokoll.</p></div>
+</div></section>
+
+<section id="betrieb"><div class="c">
+  <span class="kick">Betrieb</span><h2 class="sec">Lokal oder online. Du entscheidest.</h2>
+  <div class="deploy">
+    <div class="tile"><h3>Lokaler Server</h3><p>Läuft auf einem Rechner im Showbüro. Alle Geräte im Netzwerk öffnen die Screens im Browser, auch ohne Internet.</p><pre>./start.sh</pre></div>
+    <div class="tile"><h3>Online-Server</h3><p>Mit Docker auf deinem Server, automatisches HTTPS, Konten und Rollen. Die Crew arbeitet von überall.</p><pre>docker compose up -d</pre></div>
+  </div>
+</div></section>
+
+<section id="faq"><div class="c">
+  <span class="kick">Fragen</span><h2 class="sec">Gut zu wissen.</h2>
+  <div class="faq">
+    <details><summary>Brauchen die Gewerke ein Konto?</summary><p>Nein. Die Crew öffnet einen Freigabe-Link und sieht ihre Cues. Konten sind nur für Menschen, die planen oder steuern.</p></details>
+    <details><summary>Was passiert, wenn das Internet ausfällt?</summary><p>Beim lokalen Server läuft alles im eigenen Netzwerk weiter. Auch online bleibt die Show im Browser aktiv, bis die Verbindung zurückkommt.</p></details>
+    <details><summary>Kann ich Änderungen testen, ohne die Show zu stören?</summary><p>Ja, mit dem Vorschau-Modus. Änderungen gehen in einen Entwurf und werden erst durch Live schalten wirksam.</p></details>
+    <details><summary>Welche Zeitzone gilt?</summary><p>Die Zeitzone der Show. Alle Uhrzeiten und der Roll-Modus richten sich danach, nicht nach dem Gerät.</p></details>
+    <details><summary>Wie bekomme ich Bauchbinden in OBS oder vMix?</summary><p>Als Browserquelle mit dem Freigabe-Link. Transparent für OBS, mit Keying-Farbe für Mischer, die einen Chroma-Key nutzen.</p></details>
+  </div>
+</div></section>
+
+<section class="final"><div class="c"><h2 class="sec">Bring deine Show in Takt.</h2><p class="lead" style="margin:0 auto">Lege dein erstes Projekt an und plane den ersten Tag in wenigen Minuten.</p><div class="cta"><a class="btn primary" href="/signup">Jetzt starten</a><a class="btn" href="/login">Anmelden</a></div></div></section>
+
+<footer><div class="c"><a class="brand" href="/"><img src="/logo.svg" alt="">Tallycall</a><span>Ablaufregie für Live-Events</span><span class="sp"></span><a href="#">Impressum</a><a href="#">Datenschutz</a></div></footer>
+<script src="/i18n.js"></script>
+</body></html>

@@ -1,0 +1,31 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/app.css"><title>Gewerk</title></head>
+<body class="view" style="overflow:auto"><span class="dot" id="dot"></span>
+<div class="msg" id="msg" hidden translate="no"></div>
+<div class="gv" id="gv"></div>
+<script src="/i18n.js"></script><script src="/shared.js"></script><script src="/common.js"></script><script src="/ui.js"></script>
+<script>
+const E = CL.esc, gid = CL.params.get("g"), $ = (i) => document.getElementById(i);
+CL.onStatus((ok) => $("dot").classList.toggle("on", ok));
+UI.floating("gewerk");
+const setReady = (v) => CL.post("/action", { type: "ready", gewerk: gid, state: v }).catch((e) => e.message !== "abgebrochen" && UI.toast(e.message, true));
+document.addEventListener("pointerdown", (e) => { const b = e.target.closest("[data-ready]"); if (b) setReady(b.dataset.ready); });
+const inTxt = (ms) => (ms <= 0 && ms > -4000 ? "JETZT" : CL.fmt(ms, { hours: ms >= 3600000 }));
+let last = "";
+CL.run((s) => {
+  $("msg").hidden = !(s.message.visible && s.message.text); $("msg").textContent = s.message.text;
+  const g = CL.gewerk(gid, s);
+  let html;
+  if (!g) {
+    html = `<div class="head"><h1 style="--g:var(--fg)">Gewerk wählen</h1></div><div class="picker">${s.gewerke.map((x) => `<a href="?g=${E(x.id)}" style="--c:${E(x.color)}" translate="no">${E(x.name)}</a>`).join("")}</div>`;
+  } else {
+    const day = CL.viewDay(s), c = CL.current(s), list = CL.cues(s, gid, 14).upcoming, nx = list[0];
+    const st = s.ready[gid]?.state || "";
+    html = `<div class="head" style="--g:${E(g.color)}"><h1 translate="no">${E(g.name)}</h1><div class="meta mono">${CL.hhmmss(CL.clock(s).sec)}<br>${c ? `<span translate="no">${E(c.title)}</span> · ${CL.fmt(CL.remaining(s))}` : "<span>Show nicht gestartet</span>"} · <span translate="no">${E(day.name)}</span></div></div>
+    <div class="nextcue ${nx ? nx.state : ""}" style="--g:${E(g.color)}">${nx ? `<div class="ev"><span>Nächster Cue</span> · <span translate="no">${E(nx.e.title)}</span> · ${CL.hhmmss(nx.at)}</div>
+      <div class="txt" translate="no">${E(nx.q.text) || "–"}</div><div class="cd">${inTxt(nx.inMs)}</div>` : `<div class="txt">Keine weiteren Cues</div>`}</div>
+    <div>${list.slice(1).map((x) => `<div class="cue ${x.state}" style="--c:${E(g.color)}"><span class="when">${CL.hhmm(x.at)}</span><span class="chip" style="--c:${E(g.color)}">${E(g.short)}</span><span translate="no">${E(x.q.text)}<small>${E(x.e.title)}</small></span><span class="in">${inTxt(x.inMs)}</span></div>`).join("")}</div>
+    <div class="readybar"><button data-ready="ready" class="${st === "ready" ? "on-ready" : ""}">✔ Bereit</button><button data-ready="wait" class="${st === "wait" ? "on-wait" : ""}">✖ Nicht bereit</button></div>`;
+  }
+  if (html !== last) { $("gv").innerHTML = html; last = html; }
+});
+</script></body></html>

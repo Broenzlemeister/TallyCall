@@ -1,0 +1,182 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/app.css"><title>Planung</title></head>
+<body>
+<header id="appbar"></header>
+<div class="stick" style="top:54px"><div class="draftbar" id="draftBar" hidden></div><div class="card" id="diffCard" hidden style="margin:0;border-radius:0;border-width:0 0 1px"></div></div>
+<div class="wrap">
+  <div class="cols">
+    <section>
+      <div class="card">
+        <div class="dayrow" id="tabs"></div>
+        <div id="dayCard" style="margin-top:12px"></div>
+      </div>
+      <div class="card">
+        <table><thead><tr><th></th><th>Start</th><th>Titel</th><th>Sprecher</th><th>Dauer</th><th></th></tr></thead><tbody id="rows"></tbody></table>
+        <p class="row2" style="margin:12px 0 0"><button id="bAdd">+ Punkt</button><button id="bGroup">+ Gruppe</button><span class="hint">Neu in der Vorschau? Mit „Vorschau-Modus“ planst du ohne die laufende Show zu berühren.</span></p>
+      </div>
+    </section>
+    <aside>
+      <div class="card"><h3>Vorschau-Modus</h3>
+        <p class="hint" style="margin-top:0">Änderungen landen in einem Entwurf. Die laufende Show bleibt unberührt, bis du „Live schalten“ drückst.</p>
+        <button id="bDraft" class="primary">✎ Vorschau-Modus starten</button><span class="hint" id="draftOn" hidden>Aktiv. Siehe gelbe Leiste oben.</span></div>
+      <div class="card"><h3>Gewerke</h3><div id="gew"></div><button id="gAdd" class="sm">+ Gewerk</button></div>
+      <div class="card"><h3>Einstellungen</h3>
+        <label>Zeitzone der Show</label><input id="sTz" list="tzs"><datalist id="tzs"><option>Europe/Berlin<option>Europe/Vienna<option>Europe/Zurich<option>Europe/London<option>America/New_York<option>UTC</datalist>
+        <div class="row2"><div style="flex:1"><label>Gelb ab (Sek.)</label><input id="sYel" type="number" min="0"></div><div style="flex:1"><label>Rot ab (Sek.)</label><input id="sRed" type="number" min="0"></div><div style="flex:1"><label>Standby (Sek.)</label><input id="sStand" type="number" min="0"></div></div>
+        <div class="row2" style="margin-top:14px"><button id="bExport">Export</button><button id="bImport">Import</button><input id="file" type="file" accept=".json" hidden></div>
+      </div>
+    </aside>
+  </div>
+</div>
+<script src="/i18n.js"></script><script src="/shared.js"></script><script src="/common.js"></script><script src="/ui.js"></script>
+<script>
+const $ = (i) => document.getElementById(i), E = CL.esc, api = (a) => CL.api(a).catch((e) => e.message !== "abgebrochen" && UI.toast(e.message, true));
+UI.bar("editor");
+let dayId = null, sig = "", open = new Set(), dragId = null;
+let draftData = null, draftRev = -1, draftErr = false, askMode = "", showDiff = false;
+// Im Vorschau-Modus arbeitet der Editor auf dem Entwurf, sonst auf dem Live-Stand
+const plan = (s) => (s.hasDraft && draftData ? draftData : s);
+const day = (s) => plan(s).days.find((d) => d.id === dayId) || plan(s).days[0];
+const findP = (id) => { for (const d of plan(CL.state).days) { const e = d.events.find((x) => x.id === id); if (e) return e; } return null; };
+async function syncDraft(s) {
+  if (!s.hasDraft) { if (draftData) sig = ""; draftData = null; draftRev = -1; draftErr = false; return; }
+  if (draftRev === s.draftRev) return;
+  draftRev = s.draftRev;
+  try { const r = await fetch(CL.ctx.api + "/draft"); if (!r.ok) throw 0; const j = await r.json(); draftData = j.draft; draftErr = false; sig = ""; } catch (_) { draftErr = true; }
+}
+// Änderungen Entwurf gegenüber Live als Liste (+ neu, ~ geändert, − gelöscht)
+function diff(live, d) {
+  const out = [], idx = (x) => { const m = new Map(); x.days.forEach((day) => day.events.forEach((e) => m.set(e.id, { e, day: day.id }))); return m; };
+  const a = idx(live), b = idx(d), t = (e) => e.title || "(ohne Titel)";
+  for (const [id, v] of b) { const o = a.get(id); if (!o) out.push(["a", `Neu: ${t(v.e)}`]); else if (JSON.stringify(o.e) !== JSON.stringify(v.e)) out.push(["c", `Geändert: ${t(v.e)}`]); else if (o.day !== v.day) out.push(["c", `Anderer Tag: ${t(v.e)}`]); }
+  for (const [id, v] of a) if (!b.has(id)) out.push(["d", `Gelöscht: ${t(v.e)}`]);
+  for (const day of d.days) { const o = live.days.find((x) => x.id === day.id); if (!o) { out.push(["a", `Neuer Tag: ${day.name}`]); continue; }
+    const common = (list, other) => list.filter((e) => other.has(e.id)).map((e) => e.id).join();
+    if (common(o.events, b) !== common(day.events, a)) out.push(["c", `Reihenfolge geändert: ${day.name}`]);
+    if (o.name !== day.name || o.date !== day.date || o.startTime !== day.startTime) out.push(["c", `Tag geändert: ${day.name}`]); }
+  for (const o of live.days) if (!d.days.some((x) => x.id === o.id)) out.push(["d", `Tag gelöscht: ${o.name}`]);
+  for (const g of d.gewerke) { const o = live.gewerke.find((x) => x.id === g.id); if (!o) out.push(["a", `Neues Gewerk: ${g.name}`]); else if (JSON.stringify(o) !== JSON.stringify(g)) out.push(["c", `Gewerk geändert: ${g.name}`]); }
+  for (const o of live.gewerke) if (!d.gewerke.some((x) => x.id === o.id)) out.push(["d", `Gewerk gelöscht: ${o.name}`]);
+  if (JSON.stringify({ ...live.settings, roll: 0 }) !== JSON.stringify({ ...d.settings, roll: 0 })) out.push(["c", "Einstellungen geändert"]);
+  return out;
+}
+function renderDraftBar(s) {
+  const bar = $("draftBar"), card = $("diffCard"), on = s.hasDraft;
+  $("bDraft").hidden = on; $("draftOn").hidden = !on;
+  bar.hidden = !on; if (!on) { card.hidden = true; askMode = ""; return; }
+  if (!draftData) { bar.innerHTML = `<strong>VORSCHAU-MODUS</strong> <span>${draftErr ? "Entwurf konnte nicht geladen werden" : "Lade Entwurf …"}</span>`; return; }
+  const ch = diff(s, draftData), n = ch.length, pv = (u, l) => `<a class="btn sm" href="${CL.ctx.base}/${u}?preview=1" target="_blank">${l}</a>`;
+  const html = `<strong>VORSCHAU-MODUS</strong><span>${n ? n + (n === 1 ? " Änderung" : " Änderungen") + " noch nicht live" : "keine Änderungen gegenüber Live"}</span>
+    <button class="sm" id="bDiff">${showDiff ? "Liste ausblenden" : "Änderungen ansehen"}</button>
+    <span>Vorschau: ${pv("backstage", "Backstage")} ${pv("timeline", "Timeline")} ${pv("gewerk", "Gewerke")} ${pv("public", "Publikum")} ${pv("print", "Druck")}</span><span class="grow"></span>
+    ${askMode === "publish" ? `<span class="ask"><b>${n ? n + " Änderungen" : "Entwurf"} jetzt live schalten?</b><button class="go" id="bPubYes">Ja, live</button><button id="bAskNo">Abbrechen</button></span>`
+      : askMode === "discard" ? `<span class="ask"><b>Entwurf verwerfen?</b><button class="stop" id="bDiscYes">Ja, verwerfen</button><button id="bAskNo">Abbrechen</button></span>`
+      : `<button class="go" id="bPublish">▲ Live schalten</button><button id="bDiscard">Verwerfen</button>`}`;
+  if (bar.dataset.h !== html) { bar.dataset.h = html; bar.innerHTML = html; }
+  card.hidden = !showDiff;
+  const dh = n ? `<ul class="difflist">${ch.map(([k, tx]) => `<li class="${k}">${k === "a" ? "＋" : k === "d" ? "−" : "~"} <span>${E(tx)}</span></li>`).join("")}</ul>` : '<span class="hint">Keine Änderungen.</span>';
+  if (card.dataset.h !== dh) { card.dataset.h = dh; card.innerHTML = dh; }
+}
+$("bDraft").onclick = () => api({ type: "draftStart" });
+$("draftBar").addEventListener("click", (e) => {
+  const id = e.target.id;
+  if (id === "bDiff") { showDiff = !showDiff; renderDraftBar(CL.state); }
+  else if (id === "bPublish") { askMode = "publish"; renderDraftBar(CL.state); }
+  else if (id === "bDiscard") { askMode = "discard"; renderDraftBar(CL.state); }
+  else if (id === "bAskNo") { askMode = ""; renderDraftBar(CL.state); }
+  else if (id === "bPubYes") { askMode = ""; api({ type: "draftPublish" }).then(() => UI.toast("Änderungen sind live.")); }
+  else if (id === "bDiscYes") { askMode = ""; api({ type: "draftDiscard" }); }
+});
+
+// ---- Tage, Einstellungen, Export ----
+$("tabs").onclick = (e) => { const b = e.target.closest("button"); if (!b) return; if (b.dataset.day) { dayId = b.dataset.day; sig = ""; } else api({ type: "dayAdd" }); };
+const setting = (id, key, conv) => ($(id).onchange = () => api({ type: "settings", data: { [key]: conv($(id).value) } }));
+setting("sTz", "timezone", String); setting("sYel", "warnYellow", Number); setting("sRed", "warnRed", Number); setting("sStand", "standby", Number);
+$("bExport").onclick = () => { const s = CL.state, p = plan(s), a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([JSON.stringify({ settings: p.settings, gewerke: p.gewerke, days: p.days }, null, 2)], { type: "application/json" })); a.download = "ablauf-" + s.show.name.replace(/\W+/g, "_") + ".json"; a.click(); };
+$("bImport").onclick = () => $("file").click();
+$("file").onchange = async () => { try { await api({ type: "import", data: JSON.parse(await $("file").files[0].text()) }); sig = ""; } catch (e) { UI.toast("Datei ungültig", true); } $("file").value = ""; };
+$("dayCard").addEventListener("change", (e) => { const f = e.target.dataset.f; if (!f) return; let v = e.target.value; if (f === "startTime") v = CL.parseHHMM(v); api({ type: "dayUpdate", id: dayId, data: { [f]: v } }); });
+$("dayCard").addEventListener("click", (e) => { if (e.target.id === "dayDel" && confirm(I18N.t("Diesen Tag mit allen Punkten löschen?"))) { api({ type: "dayDelete", id: dayId }); dayId = null; } });
+$("gAdd").onclick = () => api({ type: "gewerkAdd" });
+$("gew").addEventListener("change", (e) => { const row = e.target.closest("[data-g]"), f = e.target.dataset.f; if (row && f) api({ type: "gewerkUpdate", id: row.dataset.g, data: { [f]: e.target.value } }); });
+$("gew").addEventListener("click", (e) => { const b = e.target.closest("[data-del]"); if (b && confirm(I18N.t("Gewerk und alle seine Cues löschen?"))) api({ type: "gewerkDelete", id: b.dataset.del }); });
+
+// ---- Ablauf ----
+$("bAdd").onclick = () => api({ type: "add", dayId });
+$("bGroup").onclick = () => api({ type: "add", dayId, data: { type: "group" } });
+function cueRows(e, s) {
+  return e.cues.map((c) => `<div class="cuerow" data-cue="${E(c.id)}"><select data-cf="gewerk">${plan(s).gewerke.map((g) => `<option translate="no" value="${E(g.id)}"${g.id === c.gewerk ? " selected" : ""}>${E(g.name)}</option>`).join("")}${c.gewerk ? "" : '<option value="" selected>– Gewerk –</option>'}</select>
+    <input data-cf="offset" value="${CL.fmtDur(c.offset)}" title="Zeit nach Beginn des Punkts (mm:ss)"><input data-cf="text" value="${E(c.text)}" placeholder="Cue, z. B. Licht Cue 12 Bühne hell"><button class="sm stop" data-a="cuedel" title="Cue löschen">✕</button></div>`).join("");
+}
+function render(s) {
+  if (s.hasDraft && !draftData) return;
+  const p = plan(s), d = day(s); dayId = d.id;
+  const key = JSON.stringify([p.days, p.gewerke, dayId, [...open], s.hasDraft]);
+  if (key === sig) return;
+  if (document.activeElement && document.activeElement.closest("#rows,#dayCard,#gew") && document.activeElement.matches("input,textarea,select")) return;
+  sig = key;
+  $("tabs").innerHTML = p.days.map((x) => `<button translate="no" data-day="${E(x.id)}" aria-pressed="${x.id === d.id}">${E(x.name)}</button>`).join("") + '<button data-add class="ghost">+ Tag</button>';
+  $("dayCard").innerHTML = `<div class="row2" style="align-items:flex-end"><div style="flex:2;min-width:160px"><label style="margin-top:0">Name des Tages</label><input data-f="name" value="${E(d.name)}"></div>
+    <div style="flex:1;min-width:140px"><label style="margin-top:0">Datum</label><input data-f="date" type="date" value="${E(d.date)}"></div>
+    <div style="flex:1;min-width:110px"><label style="margin-top:0">Beginn (Uhrzeit)</label><input data-f="startTime" type="time" value="${CL.hhmm(d.startTime)}"></div>
+    <button id="dayDel" class="sm stop">Tag löschen</button></div>`;
+  $("gew").innerHTML = p.gewerke.map((g) => `<div class="gwrow" data-g="${E(g.id)}"><input type="color" data-f="color" value="${E(g.color)}"><input data-f="name" value="${E(g.name)}"><input data-f="short" value="${E(g.short)}" maxlength="4" title="Kürzel"><button class="sm stop" data-del="${E(g.id)}">✕</button></div>`).join("");
+  const rows = CLS.schedule(d), sums = {}; let gi = null;
+  rows.forEach((r, i) => { if (r.group) { gi = i; sums[i] = 0; } else if (gi !== null && !r.skip) sums[gi] += r.e.duration; });
+  $("rows").innerHTML = rows.map((r, i) => { const e = r.e, id = E(e.id), isOpen = open.has(e.id);
+    if (r.group) return `<tr data-id="${id}" class="group"><td><span class="handle">⠿</span></td><td class="tm">${CL.hhmm(r.start)}</td><td colspan="3"><input data-f="title" value="${E(e.title)}" style="font-weight:600"></td><td style="white-space:nowrap"><span class="tm mono">${CL.fmtDur(sums[i] || 0)}</span> <button class="sm stop" data-a="del">✕</button></td></tr>`;
+    return `<tr data-id="${id}" class="${e.skip ? "skipped" : ""}"><td><span class="handle" title="Ziehen zum Sortieren">⠿</span></td>
+      <td class="tm" style="min-width:96px">${e.skip ? "–" : CL.hhmm(r.start)}${r.over ? ` <span class="warn" title="Der Punkt davor reicht ${CL.fmtDur(r.over)} in den festen Start hinein">⚠</span>` : ""}
+        <button class="pin ${e.start === "fixed" ? "on" : ""}" data-a="pin" title="Feste Uhrzeit (startet immer zu dieser Zeit)">📌</button>
+        ${e.start === "fixed" ? `<input type="time" data-f="fixedStart" value="${CL.hhmm(e.fixedStart)}" style="width:104px;margin-top:3px">` : ""}</td>
+      <td><div class="row2"><input type="color" data-f="color" value="${E(e.color)}"><input data-f="title" value="${E(e.title)}" style="flex:1;min-width:120px"></div>
+        <input data-f="subtitle" value="${E(e.subtitle)}" placeholder="Untertitel" style="margin-top:4px"></td>
+      <td><input data-f="presenter" value="${E(e.presenter)}" style="min-width:90px"></td>
+      <td><input data-f="duration" class="mono" value="${CL.fmtDur(e.duration)}" style="width:84px" title="mm:ss oder Minuten"></td>
+      <td style="white-space:nowrap"><button class="sm" data-a="open" title="Cues und Notizen">${isOpen ? "▾" : "▸"} ${e.cues.length}</button> <button class="sm" data-a="skip" title="Überspringen">${e.skip ? "↩" : "⤼"}</button> <button class="sm" data-a="dup" title="Duplizieren">⧉</button> <button class="sm stop" data-a="del" title="Löschen">✕</button></td></tr>
+      ${isOpen ? `<tr class="detail" data-id="${id}"><td></td><td colspan="5"><div class="cues">${cueRows(e, s)}</div>
+        <p class="row2"><button class="sm" data-a="cueadd">+ Cue</button>${p.days.length > 1 ? `<span class="hint">Verschieben nach:</span><select data-a="moveday" style="width:auto"><option value="">–</option>${p.days.filter((x) => x.id !== d.id).map((x) => `<option translate="no" value="${E(x.id)}">${E(x.name)}</option>`).join("")}</select>` : ""}</p>
+        <label>Notiz für Crew</label><textarea data-f="note" rows="2">${E(e.note)}</textarea></td></tr>` : ""}`; }).join("");
+}
+const evOf = (el) => { const id = el.closest("tr")?.dataset.id; return id ? findP(id) : null; };
+const collectCues = (tr) => [...tr.querySelectorAll("[data-cue]")].map((r) => ({ id: r.dataset.cue, gewerk: r.querySelector('[data-cf="gewerk"]').value, offset: CLS.parseDur(r.querySelector('[data-cf="offset"]').value) ?? 0, text: r.querySelector('[data-cf="text"]').value }));
+$("rows").addEventListener("change", (ev) => {
+  const t = ev.target, e = evOf(t); if (!e) return;
+  if (t.dataset.cf) return api({ type: "update", id: e.id, data: { cues: collectCues(t.closest("tr")) } });
+  if (t.dataset.a === "moveday") { if (t.value) api({ type: "move", id: e.id, dayId: t.value }); return; }
+  const f = t.dataset.f; if (!f) return;
+  let v = t.value;
+  if (f === "duration") { v = CLS.parseDur(v); if (v == null) { sig = ""; return render(CL.state); } }
+  if (f === "fixedStart") v = CLS.parseHHMM(v);
+  api({ type: "update", id: e.id, data: { [f]: v } });
+});
+$("rows").addEventListener("click", (ev) => {
+  const b = ev.target.closest("button"); if (!b || !b.dataset.a) return;
+  const e = evOf(b), a = b.dataset.a; if (!e) return;
+  if (a === "open") { open.has(e.id) ? open.delete(e.id) : open.add(e.id); sig = ""; }
+  else if (a === "skip") api({ type: "update", id: e.id, data: { skip: !e.skip } });
+  else if (a === "pin") { const r = CLS.schedule(day(CL.state)).find((x) => x.e.id === e.id); api({ type: "update", id: e.id, data: e.start === "fixed" ? { start: "chain" } : { start: "fixed", fixedStart: r.start } }); }
+  else if (a === "dup") api({ type: "add", dayId, after: e.id, data: { ...e, start: "chain", skip: false } });
+  else if (a === "del") { if (confirm(I18N.t("„{t}“ löschen?", { t: e.title }))) api({ type: "delete", id: e.id }); }
+  else if (a === "cueadd") { open.add(e.id); api({ type: "update", id: e.id, data: { cues: [...collectCues(b.closest("tr")), { gewerk: plan(CL.state).gewerke[0]?.id || "", offset: 0, text: "" }] } }); }
+  else if (a === "cuedel") { const row = b.closest("[data-cue]"); row.remove(); api({ type: "update", id: e.id, data: { cues: collectCues(document.querySelector(`tr.detail[data-id="${e.id}"]`)) } }); }
+});
+// Sortieren per Drag & Drop am Griff
+$("rows").addEventListener("mousedown", (ev) => { const tr = ev.target.closest("tr"); if (tr) tr.draggable = !!ev.target.closest(".handle"); });
+$("rows").addEventListener("dragstart", (ev) => { dragId = ev.target.dataset?.id; ev.dataTransfer.effectAllowed = "move"; ev.dataTransfer.setData("text/plain", dragId || ""); });
+$("rows").addEventListener("dragover", (ev) => { ev.preventDefault(); document.querySelectorAll(".drag-over").forEach((r) => r.classList.remove("drag-over")); ev.target.closest("tr")?.classList.add("drag-over"); });
+$("rows").addEventListener("drop", (ev) => {
+  ev.preventDefault(); const tr = ev.target.closest("tr"); if (!tr || !dragId) return;
+  const d = day(CL.state), to = d.events.findIndex((x) => x.id === tr.dataset.id);
+  api({ type: "move", id: dragId, dayId: d.id, to }); dragId = null; sig = "";
+});
+$("rows").addEventListener("dragend", () => document.querySelectorAll(".drag-over").forEach((r) => r.classList.remove("drag-over")));
+
+const setIfIdle = (el, v) => { if (document.activeElement !== el) el.value = v; };
+CL.run((s) => {
+  syncDraft(s); render(s); renderDraftBar(s);
+  const p = plan(s);
+  setIfIdle($("sTz"), p.settings.timezone); setIfIdle($("sYel"), p.settings.warnYellow); setIfIdle($("sRed"), p.settings.warnRed); setIfIdle($("sStand"), p.settings.standby);
+  document.querySelectorAll("#rows tr").forEach((tr) => tr.classList.toggle("cur", tr.dataset.id === s.runtime.currentId));
+});
+</script></body></html>

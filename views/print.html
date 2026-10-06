@@ -1,0 +1,33 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/app.css"><title>Ablauf drucken</title></head>
+<body style="background:#fff">
+<div class="pr">
+  <div class="noprint"><select id="daySel" style="width:auto;color:#000;background:#fff"></select><select id="gSel" style="width:auto;color:#000;background:#fff"></select><button onclick="print()" style="color:#000;background:#eee">Drucken / PDF</button></div>
+  <h1 id="h" translate="no"></h1><div id="sub"></div>
+  <table><thead><tr><th>Start</th><th>Ende</th><th>Dauer</th><th>Ablauf</th><th>Cues</th></tr></thead><tbody id="rows"></tbody></table>
+</div>
+<script src="/i18n.js"></script><script src="/shared.js"></script><script src="/common.js"></script><script src="/ui.js"></script>
+<script>
+const $ = (i) => document.getElementById(i), E = CL.esc;
+let started = false;
+CL.run((s) => {
+  if (!started) {
+    started = true;
+    $("daySel").innerHTML = s.days.map((d) => `<option value="${E(d.id)}" translate="no">${E(d.name)} · ${E(d.date)}</option>`).join("");
+    $("gSel").innerHTML = '<option value="">Alle Gewerke</option>' + s.gewerke.map((g) => `<option value="${E(g.id)}" translate="no">${E(g.name)}</option>`).join("");
+    $("daySel").value = CL.viewDay(s).id; $("gSel").value = CL.params.get("g") || "";
+    $("daySel").onchange = $("gSel").onchange = () => draw(CL.state);
+    draw(s);
+  }
+});
+function draw(s) {
+  const d = s.days.find((x) => x.id === $("daySel").value) || s.days[0], g = $("gSel").value, gw = CL.gewerk(g, s);
+  $("h").textContent = `${s.show.name} · ${d.name}`;
+  $("sub").textContent = `${d.date.split("-").reverse().join(".")} · Beginn ${CL.hhmm(d.startTime)}${gw ? " · Gewerk " + gw.name : ""}`;
+  $("rows").innerHTML = CLS.schedule(d).map((r) => {
+    if (r.group) return `<tr class="group"><td colspan="5" translate="no">${E(r.e.title)}</td></tr>`;
+    const cues = r.e.cues.filter((c) => !g || c.gewerk === g).sort((a, b) => a.offset - b.offset);
+    return `<tr><td>${r.skip ? "–" : CL.hhmm(r.start)}${r.e.start === "fixed" ? " 📌" : ""}</td><td>${r.skip ? "" : CL.hhmm(r.end)}</td><td>${CL.fmtDur(r.e.duration)}</td>
+      <td translate="no"><b>${E(r.e.title)}${r.skip ? " (" + I18N.t("entfällt") + ")" : ""}</b>${r.e.subtitle ? "<br>" + E(r.e.subtitle) : ""}${r.e.presenter ? "<br>" + E(r.e.presenter) : ""}${r.e.note ? `<br><i>${E(r.e.note)}</i>` : ""}</td>
+      <td translate="no">${cues.map((c) => { const x = CL.gewerk(c.gewerk, s); return `${E(x?.short || "–")} +${CLS.fmtDur(c.offset)} ${E(c.text)}`; }).join("<br>")}</td></tr>`; }).join("");
+}
+</script></body></html>

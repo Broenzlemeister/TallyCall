@@ -1,0 +1,35 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/app.css"><title>Backstage</title></head>
+<body class="view" style="overflow:auto"><span class="dot" id="dot"></span>
+<div class="msg" id="msg" hidden translate="no"></div>
+<div class="list">
+  <h1><span id="name" translate="no"></span><span class="mono"><span id="clock" class="mute"></span> &nbsp; <span id="time"></span></span></h1>
+  <div id="end" class="sub" style="margin-bottom:1vh"></div>
+  <div id="rows"></div>
+</div>
+<script src="/i18n.js"></script><script src="/shared.js"></script><script src="/common.js"></script><script src="/ui.js"></script>
+<script>
+const $ = (i) => document.getElementById(i);
+CL.onStatus((ok) => $("dot").classList.toggle("on", ok));
+UI.floating("backstage");
+let last = "";
+CL.run((s) => {
+  const c = CL.current(s), day = CL.viewDay(s);
+  $("name").textContent = s.show.name + " · " + day.name;
+  $("clock").textContent = CL.hhmmss(CL.clock(s).sec);
+  $("time").textContent = c ? CL.fmt(CL.remaining(s)) : "";
+  $("time").className = "lv-" + (c && s.runtime.status !== "paused" ? CL.level(s) : "ok");
+  const de = CL.dayEnd(s, day);
+  $("end").textContent = de ? "Ende ca. " + CL.hhmm(de.end) + (de.live && Math.abs(de.late) >= 30 ? " (" + CL.signed(de.late) + " zum Plan)" : "") : "";
+  $("msg").hidden = !(s.message.visible && s.message.text);
+  $("msg").textContent = s.message.text;
+  const ci = day.events.findIndex((e) => e.id === s.runtime.currentId);
+  const html = CL.projection(s, day).map((x, i) => {
+    if (x.group) return `<div class="gtitle" translate="no">${CL.esc(x.e.title)}</div>`;
+    const late = Math.abs(x.late) >= 60 ? ` <span class="${x.late > 0 ? "late-pos" : "late-neg"}">${CL.signed(x.late)}</span>` : "";
+    return `<div class="row ${x.e.id === s.runtime.currentId ? "now" : ""} ${ci >= 0 && i < ci ? "past" : ""} ${x.skip ? "skip" : ""}">
+    <div class="c" style="background:${CL.esc(x.e.color)}"></div><div class="t">${CL.hhmm(x.pStart)}${x.e.start === "fixed" ? " 📌" : ""}${late}</div>
+    <div translate="no">${CL.esc(x.e.title)} ${CL.gChips(x.e.cues, s)}<small>${CL.esc([x.e.presenter, x.e.subtitle, x.e.note].filter(Boolean).join(" · "))}</small></div>
+    <div class="t">${CL.fmt(x.e.duration * 1000)}</div></div>`; }).join("");
+  if (html !== last) { $("rows").innerHTML = html; last = html; }
+});
+</script></body></html>

@@ -1,0 +1,75 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/app.css"><title>Einstellungen</title>
+<style>
+.mrow { display:grid; grid-template-columns:36px minmax(0,1fr) 130px auto; gap:12px; align-items:center; padding:10px 4px; border-top:1px solid var(--line); } .mrow:first-child { border-top:0; }
+.mrow .nm { min-width:0; } .mrow .nm div { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.srow { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; align-items:center; padding:10px 4px; border-top:1px solid var(--line); } .srow:first-child { border-top:0; }
+.aud { display:grid; grid-template-columns:7.5em 8em 1fr; gap:10px; padding:5px 0; border-top:1px solid var(--line); font-size:13px; } .aud:first-child { border-top:0; } .aud .t { color:var(--mute); font-family:var(--mono); font-size:12px; }
+.danger-zone { border-color:#4a2327; }
+@media (max-width:700px) { .mrow { grid-template-columns:36px 1fr; } .aud { grid-template-columns:1fr; } }
+</style></head>
+<body>
+<header id="appbar"></header>
+<div class="wrap" style="max-width:1100px">
+  <h1 style="font-size:24px;margin:6px 0 4px">Projekteinstellungen</h1>
+  <p class="hint" style="margin:0 0 18px">Verwaltung von Name, Mitgliedern, Freigabe-Links und Aktivität. Nur Admins sehen diese Seite.</p>
+  <div class="card"><h3>Projekt</h3>
+    <div class="row2"><input id="pName" style="max-width:380px"><button id="bRename" class="primary">Umbenennen</button></div>
+  </div>
+  <div class="card"><h3>Mitglieder und Rollen</h3>
+    <div id="members"></div>
+    <div class="row2" style="margin-top:14px"><input id="invMail" type="email" placeholder="E-Mail-Adresse" style="max-width:300px"><select id="invRole" style="width:auto"><option value="editor">Editor</option><option value="admin">Admin</option></select><button id="bInvite">Hinzufügen / einladen</button></div>
+    <p class="hint" style="margin-bottom:0"><b>Admin</b> verwaltet Mitglieder, Freigaben und Einstellungen. <b>Editor</b> plant, steuert die Show und erstellt Freigabe-Links. Hat die Person noch kein Konto, wird die Einladung beim Registrieren mit dieser E-Mail automatisch eingelöst.</p>
+    <div id="invites" style="margin-top:10px"></div>
+  </div>
+  <div class="card"><h3>Freigabe-Links</h3>
+    <p class="hint" style="margin-top:0">Jeder mit einem Link sieht genau diese Ansicht, ohne Konto. Gewerk-Links erlauben zusätzlich die Bereit-Meldung. Widerrufene Links funktionieren sofort nicht mehr.</p>
+    <div id="shares"></div>
+    <div class="row2" style="margin-top:12px"><select id="shView" style="width:auto"></select><select id="shG" style="width:auto" hidden></select><button id="bShare">Neuen Link erstellen</button></div>
+  </div>
+  <div class="card"><h3>Aktivität</h3><div id="audit" class="logbox" style="max-height:340px"></div></div>
+  <div class="card danger-zone"><h3 style="color:#ff9a9a">Kopieren und löschen</h3>
+    <div class="row2"><button id="bDup">Projekt duplizieren</button><button id="bLeave" class="danger">Projekt verlassen</button><button id="bDel" class="danger">Projekt löschen …</button></div>
+  </div>
+</div>
+<script src="/i18n.js"></script><script src="/shared.js"></script><script src="/common.js"></script><script src="/ui.js"></script>
+<script>
+const $ = (i) => document.getElementById(i), E = CL.esc;
+const VIEWS = { timer: "Timer", stage: "Bühne", backstage: "Backstage", timeline: "Timeline", public: "Publikum", clock: "Uhr", lower: "Bauchbinde", print: "Druck", gewerk: "Gewerk" };
+let meta = null, gewerke = [];
+const admin = (b) => CL.admin(b).catch((e) => { e.message !== "abgebrochen" && UI.toast(e.message, true); throw e; });
+const ago = (t) => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? "gerade" : m < 60 ? `vor ${m} Min` : m < 1440 ? `vor ${Math.round(m / 60)} Std` : new Date(t).toLocaleDateString(I18N.locale); };
+async function load() {
+  meta = await (await fetch(CL.ctx.api + "/meta")).json();
+  if (meta.role !== "admin") { document.querySelector(".wrap").innerHTML = '<div class="card"><h3>Kein Zugriff</h3><p>Nur Admins dürfen die Projekteinstellungen sehen. Als Editor erstellst du Freigabe-Links über „Screens teilen“.</p></div>'; return; }
+  $("pName").value = meta.name;
+  $("members").innerHTML = meta.members.map((m) => `<div class="mrow" data-id="${E(m.userId)}"><span class="avatar">${E((m.name || "?").slice(0, 1).toUpperCase())}</span>
+    <span class="nm"><div class="row2" style="gap:8px"><b translate="no">${E(m.name)}</b>${m.userId === meta.user.id ? '<span class="badge">Du</span>' : ""}</div><div class="hint" translate="no">${E(m.email || "")}</div></span>
+    <select data-a="role"><option value="admin"${m.role === "admin" ? " selected" : ""}>Admin</option><option value="editor"${m.role === "editor" ? " selected" : ""}>Editor</option></select>
+    <button class="sm danger" data-a="rm">Entfernen</button></div>`).join("");
+  $("invites").innerHTML = meta.invites.length ? `<h3 style="margin-top:6px">Offene Einladungen</h3>` + meta.invites.map((i) => `<div class="srow"><span><span translate="no">${E(i.email)}</span> <span class="badge">${i.role === "admin" ? "Admin" : "Editor"}</span> <span class="hint">von ${E(i.by)}, ${ago(i.t)}</span></span><button class="sm" data-a="invrm" data-email="${E(i.email)}">Zurückziehen</button></div>`).join("") : "";
+  $("shares").innerHTML = meta.shares.length ? meta.shares.map((s) => { const g = s.params.g ? gewerke.find((x) => x.id === s.params.g) : null;
+    return `<div class="srow" data-id="${E(s.id)}"><div style="min-width:0"><b>${E(VIEWS[s.view] || s.view)}</b>${g ? ` <span translate="no"><span class="chip" style="--c:${E(g.color)}">${E(g.short)}</span> ${E(g.name)}</span>` : ""}${s.params.day ? ` <span class="badge">Tag</span>` : ""}<div class="hint" translate="no" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${E(s.url)}</div><div class="hint">von ${E(s.by)}, ${ago(s.created)}</div></div>
+      <span class="row2"><button class="sm" data-a="copy" data-url="${E(s.url)}">Kopieren</button><button class="sm danger" data-a="revoke">Widerrufen</button></span></div>`; }).join("") : '<p class="hint">Noch keine Links erstellt.</p>';
+  $("audit").innerHTML = meta.audit.map((a) => `<div class="aud"><span class="t">${ago(a.t)}</span><span translate="no"><b>${E(a.user)}</b></span><span>${E(a.text)}${a.n > 1 ? ` <span class="hint" translate="no">×${a.n}</span>` : ""}</span></div>`).join("") || '<p class="hint">Noch keine Aktivität.</p>';
+}
+$("shView").innerHTML = Object.entries(VIEWS).map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
+$("shView").onchange = () => { $("shG").hidden = $("shView").value !== "gewerk"; };
+$("bRename").onclick = () => admin({ type: "rename", name: $("pName").value }).then(() => { UI.toast("Umbenannt"); load(); });
+$("bInvite").onclick = () => admin({ type: "memberAdd", email: $("invMail").value, role: $("invRole").value }).then((r) => { UI.toast(r.invited ? "Einladung gespeichert. Sie gilt, sobald sich die Person registriert." : "Mitglied hinzugefügt"); $("invMail").value = ""; load(); });
+$("members").onchange = (e) => { if (e.target.dataset.a === "role") admin({ type: "memberRole", userId: e.target.closest("[data-id]").dataset.id, role: e.target.value }).then(load).catch(load); };
+$("members").onclick = (e) => { const b = e.target.closest('[data-a="rm"]'); if (!b) return; const id = b.closest("[data-id]").dataset.id, m = meta.members.find((x) => x.userId === id);
+  UI.modal({ title: "Mitglied entfernen?", html: `<p>${E(m.name)} verliert den Zugriff auf dieses Projekt.</p>`, actions: [{ label: "Abbrechen" }, { label: "Entfernen", cls: "danger", onClick: (close) => { close(); admin({ type: "memberRemove", userId: id }).then(() => (UI.toast("Entfernt"), load())); } }] }); };
+$("invites").onclick = (e) => { const b = e.target.closest('[data-a="invrm"]'); if (b) admin({ type: "inviteRemove", email: b.dataset.email }).then(load); };
+$("shares").onclick = async (e) => {
+  const b = e.target.closest("[data-a]"); if (!b) return;
+  if (b.dataset.a === "copy") { (await UI.copy(b.dataset.url)) ? UI.toast("Link kopiert") : UI.toast("Kopieren nicht möglich, bitte Link markieren", true); }
+  else if (b.dataset.a === "revoke") admin({ type: "shareRevoke", id: b.closest("[data-id]").dataset.id }).then(() => (UI.toast("Link widerrufen"), load()));
+};
+$("bShare").onclick = async () => { const v = $("shView").value; await UI.share(v, v === "gewerk" ? { g: $("shG").value } : {}); load(); };
+$("bDup").onclick = () => admin({ type: "duplicate" }).then((r) => { location.href = "/p/" + r.id + "/"; });
+$("bLeave").onclick = () => UI.modal({ title: "Projekt verlassen?", html: "<p>Du verlierst den Zugriff. Ein Admin kann dich wieder einladen.</p>", actions: [{ label: "Abbrechen" }, { label: "Verlassen", cls: "danger", onClick: (close) => { close(); admin({ type: "memberRemove", userId: meta.user.id }).then(() => (location.href = "/app")); } }] });
+$("bDel").onclick = () => { const m = UI.modal({ title: "Projekt löschen?", html: `<p>Alle Tage, Cues, Gewerke und Freigabe-Links werden unwiderruflich gelöscht. Zur Bestätigung den Projektnamen eingeben:</p><input id="delName" translate="no" placeholder="${E(meta.name)}">`,
+  actions: [{ label: "Abbrechen" }, { label: "Endgültig löschen", cls: "danger", onClick: (close, bg) => admin({ type: "delete", confirm: bg.querySelector("#delName").value }).then(() => (location.href = "/app")).catch(() => {}) }] }); };
+// Gewerke für die Auswahl laden, dann Seite füllen
+fetch(CL.ctx.api + "/state").then((r) => r.json()).then((s) => { gewerke = s.gewerke; $("shG").innerHTML = gewerke.map((g) => `<option translate="no" value="${E(g.id)}">${E(g.name)}</option>`).join(""); UI.bar("settings"); load(); });
+</script></body></html>
