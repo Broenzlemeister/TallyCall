@@ -13,7 +13,7 @@
   </div>
   <div id="tl"></div>
   <div class="row2 hint" style="margin-top:10px;gap:18px">
-    <span><b style="color:var(--fg2)">Balken</b> = Plan · gefüllter Teil = abgelaufen</span><span>◆ Cue (Gewerke-Spur)</span><span style="color:var(--stop)">▌ Jetzt</span><span>Schraffiert = Überschneidung mit festem Start</span><span>Strg + Mausrad = Zoom</span>
+    <span><b style="color:var(--fg2)">Balken</b> = Plan · gefüllter Teil = abgelaufen</span><span>Gestrichelt = Pause</span><span>Obere Spuren = Gruppen</span><span>◆ Cue (Gewerke-Spur)</span><span style="color:var(--stop)">▌ Jetzt</span><span>Schraffiert = Überschneidung mit festem Start</span><span>Strg + Mausrad = Zoom</span>
   </div>
   <div class="card" id="detail" style="margin-top:14px" hidden></div>
 </div>
@@ -34,7 +34,7 @@ const setMode = (m) => { tl.setMode(m); $("mG").setAttribute("aria-pressed", m =
 $("mG").onclick = () => { setParam("mode", null); setMode("gewerke"); }; $("mD").onclick = () => { setParam("mode", "days"); setMode("days"); }; setMode(CL.params.get("mode") === "days" ? "days" : "gewerke");
 $("zIn").onclick = () => tl.setZoom(tl.zoom * 1.4); $("zOut").onclick = () => tl.setZoom(tl.zoom / 1.4); $("zFit").onclick = () => tl.fit();
 $("bNow").onclick = () => tl.scrollToNow(); $("follow").onchange = () => tl.setFollow($("follow").checked);
-function paintEdit() { $("bEdit").textContent = editing ? "✓ Bearbeiten beenden" : "✎ Bearbeiten (Vorschau-Modus)"; $("editHint").textContent = editing ? "Balkenende ziehen = Dauer, ◆ ziehen = Cue-Zeit. Änderungen gehen in den Entwurf, live schalten unter Planung." : ""; }
+function paintEdit() { $("bEdit").textContent = editing ? "✓ Bearbeiten beenden" : "✎ Bearbeiten (Vorschau-Modus)"; $("editHint").textContent = editing ? "Balkenende ziehen = Dauer · linker Rand ziehen = feste Uhrzeit · ◆ ziehen = Cue-Zeit. Änderungen gehen in den Entwurf, live schalten unter Planung." : ""; }
 $("bEdit").onclick = async () => {
   if (!editing && !CL.state.hasDraft) { try { await CL.api({ type: "draftStart" }); } catch (e) { return UI.toast(e.message, true); } }
   editing = !editing; setParam("edit", editing ? "1" : null); setParam("preview", editing ? "1" : null);
@@ -48,7 +48,7 @@ function renderDetail() {
   if (!selection || !s) { box.hidden = true; lastDetail = ""; return; }
   const f = CL.find(selection.eventId, s); if (!f) { box.hidden = true; return; }
   const e = f.e, row = CLS.schedule(f.day).find((r) => r.e.id === e.id);
-  const html = `<h3 translate="no">${E(e.title)}</h3><div class="row2" style="gap:18px"><span class="mono">${CL.hhmm(row.start)}–${CL.hhmm(row.end)}</span><span class="mono mute">${CL.fmtDur(e.duration)}</span>${e.presenter ? `<span class="fg2" translate="no">${E(e.presenter)}</span>` : ""}${e.start === "fixed" ? '<span class="badge">📌 feste Uhrzeit</span>' : ""}</div>
+  const html = `<h3 translate="no">${E(e.title)}</h3><div class="row2" style="gap:18px"><span class="mono">${CL.hhmm(row.start)}–${CL.hhmm(row.end)}</span><span class="mono mute">${CL.fmtDur(e.duration)}</span>${e.presenter ? `<span class="fg2" translate="no">${E(e.presenter)}</span>` : ""}${e.start === "fixed" ? '<span class="badge">📌 feste Uhrzeit</span>' : ""}${e.type === "break" ? '<span class="pill brk">Pause</span>' : ""}${e.type === "group" ? '<span class="pill">Gruppe</span>' : ""}${isMember ? `<a class="btn sm ghost" href="${CL.ctx.base}/editor?sel=${E(e.id)}">Bearbeiten →</a>` : ""}</div>
     ${e.note ? `<p class="fg2" translate="no">${E(e.note)}</p>` : ""}
     <div style="margin-top:8px">${[...e.cues].sort((a, b) => a.offset - b.offset).map((c) => { const g = CL.gewerk(c.gewerk, s); return `<div class="cue" style="--c:${E(g?.color || "#94a3b8")}"><span class="when">+${CL.fmt(c.offset * 1000)}</span><span class="chip" style="--c:${E(g?.color || "#94a3b8")}">${E(g?.short || "–")}</span><span translate="no">${E(c.text)}</span><span></span></div>`; }).join("") || '<p class="hint">Keine Cues.</p>'}</div>`;
   if (html !== lastDetail) { box.innerHTML = html; lastDetail = html; } box.hidden = false;

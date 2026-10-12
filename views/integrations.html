@@ -1,0 +1,95 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/app.css"><title>Trigger</title></head>
+<body>
+<header id="appbar"></header>
+<div class="wrap">
+  <div class="row2" style="justify-content:space-between;margin:6px 0 14px"><div><h1 style="font-size:24px">Trigger und Integrationen</h1><p class="hint" style="margin:4px 0 0">Tallycall sendet bei Ereignissen Nachrichten an Medienserver, Lichtpulte und Co. (HTTP, OSC, TCP, UDP) und lässt sich von Companion, Stream Deck oder OSC steuern.</p></div><span class="pill" id="policy"></span></div>
+  <div class="cols" style="grid-template-columns:minmax(0,1fr) 380px">
+    <section>
+      <div class="card"><h3>Ziele</h3>
+        <p class="hint" style="margin-top:0">Ein Ziel ist ein Gerät oder Dienst. Pixera: TCP/HTTP auf Port 1400 (JSON-RPC) · QLab/Resolume/grandMA: OSC · Companion: HTTP auf Port 8000.</p>
+        <div id="targets"></div>
+        <div class="row2" style="margin-top:12px"><button id="tAdd">+ Ziel</button><span class="hint" id="tHint"></span></div>
+      </div>
+      <div class="card"><h3>Regeln <span class="hint" style="text-transform:none;letter-spacing:0;margin-left:8px">gelten für alle Punkte</span></h3>
+        <p class="hint" style="margin-top:0">Bei jedem Ereignis die Nachricht an das Ziel senden. Platzhalter:</p><p class="hint" translate="no" style="margin-top:-6px"><code>{title}</code> <code>{subtitle}</code> <code>{presenter}</code> <code>{id}</code> <code>{day}</code> <code>{show}</code> <code>{next}</code> <code>{remaining}</code> <code>{remainingSec}</code> <code>{clock}</code> <code>{cue}</code> <code>{gewerk}</code> <code>{gewerkShort}</code> <code>{message}</code> <code>{lowerTitle}</code> <code>{ready}</code> <code>{event}</code></p>
+        <div id="rules"></div>
+        <div class="row2" style="margin-top:12px"><button id="rAdd">+ Regel</button></div>
+        <p class="hint">Trigger für einzelne Punkte oder Cues legst du in der Planung direkt am Punkt an (⚡).</p>
+      </div>
+      <div class="card"><h3>Sendeprotokoll <button class="sm ghost" id="logRefresh" style="margin-left:8px">Aktualisieren</button></h3><div class="tlog" id="tlog"></div></div>
+    </section>
+    <aside>
+      <div class="card" id="apiCard"><h3>Steuerung von außen</h3>
+        <p class="hint" style="margin-top:0">Companion (Stream Deck), Browser-Favoriten oder jedes Gerät, das eine URL aufrufen kann, steuern die Show über einen API-Schlüssel.</p>
+        <div id="tokens"></div>
+        <div class="row2" style="margin-top:10px"><input id="tkName" placeholder="Name, z. B. Companion Regie" style="max-width:220px"><select id="tkScope" style="width:auto"><option value="control">Steuern</option><option value="read">Nur lesen</option></select><button id="tkAdd" class="primary">Schlüssel erstellen</button></div>
+        <div id="tkNew" hidden style="margin-top:10px"></div>
+        <details style="margin-top:12px"><summary class="hint" style="cursor:pointer">Befehle per URL</summary><div class="code" id="cmdHelp" translate="no"></div></details>
+        <details style="margin-top:8px"><summary class="hint" style="cursor:pointer">Companion-Modul</summary><p class="hint">Das Modul liegt im Repo im Ordner „integrations/companion“. In Companion: Einstellungen → Entwickler-Modulpfad auf den Ordner setzen, Verbindung „Tallycall“ anlegen, Adresse, Projekt-ID und Schlüssel eintragen. Es bringt Aktionen (Start, Weiter, Pause, Zeit, Bauchbinde, Nachricht, Bereit), Rückmeldungen (Status, Warnfarbe, Gewerk bereit) und Variablen (Titel, Restzeit, Nächster Punkt) mit.</p></details>
+        <details style="margin-top:8px"><summary class="hint" style="cursor:pointer">OSC-Eingang</summary><p class="hint" id="oscHelp"></p></details>
+      </div>
+      <div class="card"><h3>So triggerst du Pixera</h3>
+        <ol class="hint" style="padding-left:18px;margin:0;line-height:1.7"><li>Ziel anlegen: Typ TCP, Host = IP des Pixera-Rechners, Port 1400. In Pixera unter Settings → API den Port aktivieren.</li><li>Nachricht als JSON-RPC, zum Beispiel:<div class="code" translate="no">{"jsonrpc":"2.0","id":1,"method":"Pixera.Timelines.Timeline.play","params":{"handle":12345}}\n</div>Das „\n“ am Ende wird als Zeilenumbruch gesendet.</li><li>Die Nachricht als Regel (bei „Start“), als Trigger an einem Punkt oder an einem Cue hinterlegen.</li></ol>
+        <p class="hint" style="margin:8px 0 0">Läuft Tallycall online (tallycall.com) und Pixera im Veranstaltungsnetz, erreicht der Server das Gerät nicht. Dann triggert Companion vor Ort: Es hört auf Tallycall und sendet an Pixera. Ein lokaler Tallycall-Server sendet direkt.</p>
+      </div>
+    </aside>
+  </div>
+</div>
+<script src="/i18n.js"></script><script src="/shared.js"></script><script src="/common.js"></script><script src="/ui.js"></script>
+<script>
+const $ = (i) => document.getElementById(i), E = CL.esc, api = (a) => CL.api(a).catch((e) => e.message !== "abgebrochen" && UI.toast(e.message, true));
+const admin = (b) => CL.admin(b).catch((e) => { e.message !== "abgebrochen" && UI.toast(e.message, true); throw e; });
+const EVENTS = [["start", "Punkt startet"], ["end", "Punkt endet"], ["next", "Weiter"], ["pause", "Pause"], ["stop", "Reset / Ende"], ["cue", "Cue fällig"], ["message", "Nachricht gezeigt"], ["lower", "Bauchbinde eingeblendet"], ["ready", "Bereit-Meldung"], ["roll", "Roll-Modus geschaltet"]];
+let meta = null, sig = "", rsig = "";
+async function loadMeta() {
+  meta = await (await fetch(CL.ctx.api + "/meta")).json();
+  $("policy").textContent = { all: "Trigger: alle Adressen (lokaler Server)", public: "Trigger: nur öffentliche Adressen (online)", off: "Trigger: abgeschaltet" }[meta.triggers] || "";
+  $("policy").className = "pill " + (meta.triggers === "off" ? "bad" : "ok");
+  $("oscHelp").textContent = meta.oscPort ? I18N.t("Aktiv auf UDP-Port {p}. Adresse: /tallycall/{id}/next (auch start, pause, toggle, prev, stop, add, sub, load <id>, ready <gewerk> <ready|wait>, message <text>, lower <id|hide>).", { p: meta.oscPort, id: CL.ctx.pid }) : I18N.t("Nicht aktiv. Beim Start OSC_PORT=9000 setzen (nur für lokale Server sinnvoll).");
+  const base = meta.apiBase;
+  $("cmdHelp").innerHTML = ["next", "prev", "start", "pause", "toggle", "stop", "add?min=1", "sub?min=1", "load?id=PUNKT", "day?id=TAG", "roll?on=1", "ready?g=GEWERK&state=ready", "message?text=Hallo&visible=1", "lower?id=BAUCHBINDE", "lower?visible=0"].map((c) => `<b>GET</b> ${E(base)}/cmd/${E(c)}${c.includes("?") ? "&" : "?"}token=SCHLÜSSEL`).join("\n") + `\n\n<b>GET</b> ${E(base)}/status?token=…   (Zustand als JSON)\n<b>GET</b> ${E(base)}/events?token=…   (Live-Strom, SSE)\n<b>POST</b> ${E(base)}/action  Authorization: Bearer SCHLÜSSEL  {"type":"next"}`;
+  if (meta.role !== "admin") { $("apiCard").querySelector(".row2").hidden = true; }
+  $("tokens").innerHTML = meta.tokens?.length ? meta.tokens.map((t) => `<div class="srow" style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-top:1px solid var(--line)"><span><b translate="no">${E(t.name)}</b> <span class="pill">${t.scope === "read" ? "nur lesen" : "steuern"}</span><div class="hint mono" translate="no">${E(t.prefix)}… · ${t.lastUsed ? I18N.t("zuletzt {t}", { t: new Date(t.lastUsed).toLocaleString(I18N.locale) }) : I18N.t("noch nie benutzt")}</div></span>${meta.role === "admin" ? `<button class="sm danger" data-rev="${E(t.id)}">Widerrufen</button>` : ""}</div>`).join("") : '<p class="hint">Noch kein Schlüssel.</p>';
+  renderLog();
+}
+function renderLog() {
+  const l = meta.trigLog || [];
+  $("tlog").innerHTML = l.length ? l.map((x) => `<div><span>${CL.hhmmss(CL.nowParts(x.t, CL.state?.settings.timezone).sec)}</span><span translate="no">${E(x.target)} <span class="pill">${E(x.type)}</span></span><span>${E(x.what)}</span><span class="mono" translate="no" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${E(x.text)}</span><span class="${x.ok === true ? "ok" : x.ok === false ? "bad" : ""}" translate="no">${x.ok === true ? "✓ " : x.ok === false ? "✕ " : "… "}${E(x.info)}</span></div>`).join("") : '<p class="hint">Noch nichts gesendet. Mit „Testen“ an einem Ziel prüfst du die Verbindung.</p>';
+}
+$("logRefresh").onclick = loadMeta;
+$("tkAdd").onclick = async () => { try { const r = await admin({ type: "tokenCreate", name: $("tkName").value || "Companion", scope: $("tkScope").value }); $("tkNew").hidden = false; $("tkNew").innerHTML = `<div class="code" translate="no"><b>${E(r.token)}</b></div><p class="hint" style="color:var(--warn)">Jetzt kopieren. Der Schlüssel wird nur dieses eine Mal angezeigt.</p>`; $("tkName").value = ""; loadMeta(); } catch (_) {} };
+$("tokens").onclick = (e) => { const b = e.target.closest("[data-rev]"); if (b && confirm(I18N.t("Schlüssel widerrufen? Geräte damit verlieren sofort den Zugriff."))) admin({ type: "tokenRevoke", id: b.dataset.rev }).then(loadMeta); };
+
+const TYPES = [["http", "HTTP"], ["osc", "OSC"], ["tcp", "TCP"], ["udp", "UDP"]];
+function renderTargets(s) {
+  const list = s.integrations?.targets || [], key = JSON.stringify(list);
+  if (key === sig || (document.activeElement && $("targets").contains(document.activeElement) && document.activeElement.matches("input,select"))) return;
+  sig = key;
+  $("targets").innerHTML = list.map((t) => `<div class="trow" data-id="${E(t.id)}"><input data-f="name" value="${E(t.name)}" placeholder="Name" translate="no"><select data-f="type">${TYPES.map(([v, l]) => `<option value="${v}"${t.type === v ? " selected" : ""}>${l}</option>`).join("")}</select>
+    ${t.type === "http" ? `<input data-f="url" value="${E(t.url || "")}" placeholder="https://… (Platzhalter erlaubt)" translate="no">` : `<span class="row2" style="gap:6px"><input data-f="host" value="${E(t.host || "")}" placeholder="Host / IP" translate="no" style="flex:2"><input data-f="port" type="number" min="1" max="65535" value="${t.port || ""}" placeholder="Port" style="flex:1;min-width:80px"></span>`}
+    <span class="row2" style="gap:4px"><label class="sw" title="Aktiv"><input type="checkbox" data-f="enabled" ${t.enabled ? "checked" : ""}></label><button class="sm" data-a="test" title="Testnachricht senden">Testen</button><button class="sm ghost stop" data-a="del">✕</button></span>
+    ${t.type === "http" ? `<div class="sub"><select data-f="method"><option${t.method === "GET" ? " selected" : ""}>GET</option><option${t.method !== "GET" && t.method !== "PUT" ? " selected" : ""}>POST</option><option${t.method === "PUT" ? " selected" : ""}>PUT</option></select><input data-f="headers" value="${E(t.headers || "")}" placeholder="Header, z. B. Authorization: Bearer …" translate="no" style="grid-column:span 2"></div>` : ""}</div>`).join("") || '<p class="hint">Noch kein Ziel. Mit „+ Ziel“ beginnen.</p>';
+}
+function renderRules(s) {
+  const list = s.integrations?.rules || [], tg = s.integrations?.targets || [], key = JSON.stringify([list, tg, s.gewerke]);
+  if (key === rsig || (document.activeElement && $("rules").contains(document.activeElement) && document.activeElement.matches("input,select"))) return;
+  rsig = key;
+  $("rules").innerHTML = list.map((r) => `<div class="rrow" data-id="${E(r.id)}"><select data-f="on">${EVENTS.map(([v, l]) => `<option value="${v}"${r.on === v ? " selected" : ""}>${l}</option>`).join("")}</select>
+    <select data-f="targetId"><option value="">– Ziel –</option>${tg.map((t) => `<option translate="no" value="${E(t.id)}"${t.id === r.targetId ? " selected" : ""}>${E(t.name)}</option>`).join("")}</select>
+    <select data-f="gewerk" ${r.on === "cue" || r.on === "ready" ? "" : "disabled"}><option value="">alle Gewerke</option>${s.gewerke.map((g) => `<option translate="no" value="${E(g.id)}"${g.id === r.gewerk ? " selected" : ""}>${E(g.name)}</option>`).join("")}</select>
+    <input data-f="payload" value="${E(r.payload)}" placeholder="Nachricht, z. B. /cue/go {title}" translate="no">
+    <span class="row2" style="gap:4px"><label class="sw" title="Aktiv"><input type="checkbox" data-f="enabled" ${r.enabled ? "checked" : ""}></label><button class="sm ghost stop" data-a="del">✕</button></span></div>`).join("") || '<p class="hint">Noch keine Regel.</p>';
+}
+$("tAdd").onclick = () => api({ type: "targetAdd" });
+$("rAdd").onclick = () => api({ type: "ruleAdd" });
+$("targets").addEventListener("change", (e) => { const row = e.target.closest("[data-id]"), f = e.target.dataset.f; if (!row || !f) return; sig = ""; api({ type: "targetUpdate", id: row.dataset.id, data: { [f]: e.target.type === "checkbox" ? e.target.checked : e.target.value } }); });
+$("targets").addEventListener("click", async (e) => { const b = e.target.closest("[data-a]"); if (!b) return; const id = b.closest("[data-id]").dataset.id;
+  if (b.dataset.a === "del") { if (confirm(I18N.t("Ziel löschen? Regeln und Trigger, die es nutzen, werden entfernt."))) api({ type: "targetDelete", id }); }
+  else if (b.dataset.a === "test") { const t = CL.state.integrations.targets.find((x) => x.id === id); const payload = prompt(I18N.t("Testnachricht an {n}:", { n: t.name }), t.type === "osc" ? "/tallycall/test 1" : t.type === "http" ? '{"event":"test","show":"{show}"}' : "tallycall test\\n"); if (payload == null) return;
+    try { const r = await CL.post("/trigtest", { id, payload }); UI.toast(I18N.t("Gesendet: {i}", { i: r.info })); } catch (err) { UI.toast(err.message, true); } loadMeta(); } });
+$("rules").addEventListener("change", (e) => { const row = e.target.closest("[data-id]"), f = e.target.dataset.f; if (!row || !f) return; rsig = ""; api({ type: "ruleUpdate", id: row.dataset.id, data: { [f]: e.target.type === "checkbox" ? e.target.checked : e.target.value } }); });
+$("rules").addEventListener("click", (e) => { const b = e.target.closest('[data-a="del"]'); if (b) api({ type: "ruleDelete", id: b.closest("[data-id]").dataset.id }); });
+UI.bar("integrations").then(loadMeta);
+let lastLog = 0;
+CL.run((s) => { renderTargets(s); renderRules(s); if (Date.now() - lastLog > 5000 && meta) { lastLog = Date.now(); fetch(CL.ctx.api + "/meta").then((r) => r.json()).then((m) => { if (JSON.stringify(m.trigLog) !== JSON.stringify(meta.trigLog)) { meta.trigLog = m.trigLog; renderLog(); } }); } });
+</script></body></html>

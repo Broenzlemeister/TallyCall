@@ -24,10 +24,10 @@ function draw(s) {
   $("h").textContent = `${s.show.name} · ${d.name}`;
   $("sub").textContent = `${d.date.split("-").reverse().join(".")} · Beginn ${CL.hhmm(d.startTime)}${gw ? " · Gewerk " + gw.name : ""}`;
   $("rows").innerHTML = CLS.schedule(d).map((r) => {
-    if (r.group) return `<tr class="group"><td colspan="5" translate="no">${E(r.e.title)}</td></tr>`;
+    if (r.group) return `<tr class="group"><td colspan="5" translate="no" style="padding-left:${7 + r.depth * 18}px">${E(r.e.title)}${r.empty ? "" : ` <span style="font-weight:400">${CL.hhmm(r.start)}–${CL.hhmm(r.end)}</span>`}</td></tr>`;
     const cues = r.e.cues.filter((c) => !g || c.gewerk === g).sort((a, b) => a.offset - b.offset);
     return `<tr><td>${r.skip ? "–" : CL.hhmm(r.start)}${r.e.start === "fixed" ? " 📌" : ""}</td><td>${r.skip ? "" : CL.hhmm(r.end)}</td><td>${CL.fmtDur(r.e.duration)}</td>
-      <td translate="no"><b>${E(r.e.title)}${r.skip ? " (" + I18N.t("entfällt") + ")" : ""}</b>${r.e.subtitle ? "<br>" + E(r.e.subtitle) : ""}${r.e.presenter ? "<br>" + E(r.e.presenter) : ""}${r.e.note ? `<br><i>${E(r.e.note)}</i>` : ""}</td>
+      <td translate="no" style="padding-left:${7 + r.depth * 18}px"><b>${r.brk ? "⏸ " : ""}${E(r.e.title)}${r.skip ? " (" + I18N.t("entfällt") + ")" : ""}</b>${r.e.subtitle ? "<br>" + E(r.e.subtitle) : ""}${r.e.presenter ? "<br>" + E(r.e.presenter) : ""}${r.e.note ? `<br><i>${E(r.e.note)}</i>` : ""}</td>
       <td translate="no">${cues.map((c) => { const x = CL.gewerk(c.gewerk, s); return `${E(x?.short || "–")} +${CLS.fmtDur(c.offset)} ${E(c.text)}`; }).join("<br>")}</td></tr>`; }).join("");
 }
 </script></body></html>

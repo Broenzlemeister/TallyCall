@@ -3,6 +3,7 @@
 <div class="clock-small" id="clock"></div>
 <div class="msg" id="msg" hidden translate="no"></div>
 <div class="center">
+  <div class="brk-tag" id="brk" hidden>Pause</div>
   <div class="title" id="title" translate="no"></div>
   <div class="bigtime" id="time">--:--</div>
   <div class="bar"><i id="bar"></i></div>
@@ -20,8 +21,10 @@ CL.run((s) => {
   $("time").textContent = c ? CL.fmt(CL.remaining(s)) : "--:--";
   $("time").className = "bigtime lv-" + (c && s.runtime.status !== "paused" ? lv : "ok");
   $("title").textContent = c ? c.title : "Bereit";
-  $("sub").textContent = c ? [c.presenter, c.subtitle].filter(Boolean).join(" · ") : "";
-  $("next").textContent = n ? n.title : "–";
+  $("brk").hidden = !(c && c.type === "break");
+  const pr = c && c.type === "break" ? CL.projection(s).find((x) => x.e.id === c.id) : null;
+  $("sub").textContent = c ? (pr ? I18N.t("Weiter um {t}", { t: CL.hhmm(pr.pEnd) }) : [c.presenter, c.subtitle].filter(Boolean).join(" · ")) : "";
+  $("next").textContent = n ? (n.type === "break" ? "⏸ " : "") + n.title : "–";
   const de = CL.dayEnd(s);
   $("end").textContent = de ? "Ende ca. " + CL.hhmm(de.end) : "";
   const total = c ? c.duration * 1000 + s.runtime.added : 0;

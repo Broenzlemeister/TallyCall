@@ -69,7 +69,7 @@ const CL = (() => {
   }
   const upcoming = (s = state) => {
     const f = find(s.runtime.currentId, s); if (!f) return null;
-    const list = f.day.events.filter((e) => e.type !== "group" && !e.skip);
+    const list = f.day.events.filter((e) => e.type !== "group" && !CLS.effSkip(f.day.events, e));
     return list[list.indexOf(f.e) + 1] || null;
   };
   function elapsed(s = state) { const r = s.runtime; return r.pausedElapsed + (r.status === "running" ? now() - r.startedAt : 0); }
@@ -119,6 +119,7 @@ const CL = (() => {
     const r = await fetch(ctx.api + path, { method: "POST", headers: { "Content-Type": "application/json", "x-cl": "1" }, body: JSON.stringify(body) });
     if (r.status === 401 && ctx.kind === "project") { location.href = "/login?next=" + encodeURIComponent(location.pathname + location.search); throw new Error("abgebrochen"); }
     const j = await r.json().catch(() => ({}));
+    if (r.status === 402 && j.upgrade) document.dispatchEvent(new CustomEvent("cl-upgrade", { detail: j.error }));
     if (!r.ok) throw new Error(j.error || r.statusText);
     return j;
   }
@@ -131,9 +132,11 @@ const CL = (() => {
     setInterval(() => state && render(state), 100);
     connect();
   }
+  // Anzeige-Hilfen: Typ-Kennzeichen und Palette
+  const typeIcon = (e) => (e.type === "group" ? "▣" : e.type === "break" ? "⏸" : "");
   const gChips = (list, s = state) => [...new Set(list.map((q) => q.gewerk))].map((id) => { const g = gewerk(id, s); return g ? `<span class="chip" style="--c:${esc(g.color)}">${esc(g.short || g.name)}</span>` : ""; }).join("");
 
-  return { ...CLS, ctx, post, admin, refresh, connect, run, esc, now, clock, clockExact, elapsed, current, find, gewerk, viewDay, upcoming, remaining, level, projection, dayEnd, cues, api, params, gChips, onStatus: (f) => (statusCb = f), get state() { return state; } };
+  return { ...CLS, ctx, post, admin, refresh, connect, run, esc, now, clock, clockExact, elapsed, current, find, gewerk, viewDay, upcoming, remaining, level, projection, dayEnd, cues, api, params, gChips, typeIcon, onStatus: (f) => (statusCb = f), get state() { return state; } };
 })();
 
 // Vollbild per F / Doppelklick, Bildschirm anlassen

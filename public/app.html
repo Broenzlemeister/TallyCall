@@ -13,7 +13,7 @@
 <body>
 <header class="appbar">
   <a class="brand" href="/app"><img src="/logo.svg" alt="">Tallycall</a><span class="sp"></span>
-  <select id="langSel" aria-label="Sprache" style="width:auto;padding:5px 26px 5px 10px;font-size:13px"></select><button class="avatar" id="uiUser" title="Konto" translate="no">?</button>
+  <a class="btn sm ghost" id="adminLink" href="/admin" hidden>Verwaltung</a><span id="planPill" hidden></span><select id="langSel" aria-label="Sprache" style="width:auto;padding:5px 26px 5px 10px;font-size:13px"></select><button class="avatar" id="uiUser" title="Konto" translate="no">?</button>
 </header>
 <div class="wrap" style="max-width:1100px">
   <div class="row2" style="margin:10px 0 18px;justify-content:space-between">
@@ -25,7 +25,7 @@
 <script src="/i18n.js"></script>
 <script>
 const $ = (i) => document.getElementById(i), E = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const post = async (path, body) => { const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "x-cl": "1" }, body: JSON.stringify(body) }); const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || "Fehler"); return j; };
+const post = async (path, body) => { const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "x-cl": "1" }, body: JSON.stringify(body) }); const j = await r.json().catch(() => ({})); if (r.status === 402 && j.upgrade) document.dispatchEvent(new CustomEvent("cl-upgrade", { detail: j.error })); if (!r.ok) throw new Error(j.error || "Fehler"); return j; };
 const fmt = (d) => d ? new Date(d + "T12:00:00Z").toLocaleDateString(I18N.locale, { timeZone: "UTC" }) : "";
 let me = null, projects = [];
 function toast(m, bad) { document.querySelectorAll(".toast").forEach((t) => t.remove()); const t = document.createElement("div"); t.className = "toast" + (bad ? " bad" : ""); t.textContent = m; document.body.appendChild(t); setTimeout(() => t.remove(), 3500); }
@@ -55,7 +55,12 @@ function account() {
     [{ label: "Abmelden", cls: "danger", fn: async () => { await post("/api/logout", {}); location.href = "/"; } }, { label: "Abbrechen" }, { label: "Speichern", cls: "primary", fn: async (close, bg) => {
       try { const body = { name: bg.querySelector("#acName").value }; const n = bg.querySelector("#acNew").value; if (n) { body.password = n; body.current = bg.querySelector("#acCur").value; } const r = await post("/api/account", body); me = r.user; paintUser(); close(); toast("Gespeichert"); } catch (e) { toast(e.message, true); } } }]);
 }
-function paintUser() { $("uiUser").textContent = (me.name || "?").slice(0, 1).toUpperCase(); $("greet").textContent = me.local ? "Lokaler Modus" : `Angemeldet als ${me.name}`; }
+function paintUser() {
+  $("uiUser").textContent = (me.name || "?").slice(0, 1).toUpperCase(); $("greet").textContent = me.local ? "Lokaler Modus" : `Angemeldet als ${me.name}`;
+  $("adminLink").hidden = !me.siteAdmin || me.local;
+  if (me.enforced && !me.local) { const p = $("planPill"); p.hidden = false; p.className = "pill " + (me.plan === "pro" ? "pro" : ""); p.innerHTML = me.plan === "pro" ? "Pro" + (me.until ? ` <span class="hint">${I18N.t("bis {d}", { d: new Date(me.until).toLocaleDateString(I18N.locale) })}</span>` : "") : `Free ${me.payLink ? `· <a href="${E(me.payLink)}" target="_blank">${I18N.t("Auf Pro wechseln")}</a>` : ""}`; }
+}
+document.addEventListener("cl-upgrade", (e) => modal("Pro-Plan nötig", `<p>${E(e.detail)}</p>${me?.payLink ? "" : '<p class="hint">Dieser Server hat noch keine Bezahlung eingerichtet. Bitte den Betreiber kontaktieren.</p>'}`, [{ label: "Schließen" }, ...(me?.payLink ? [{ label: "Auf Pro wechseln", cls: "primary", fn: () => window.open(me.payLink, "_blank") }] : [])]));
 $("list").addEventListener("click", (e) => { if (e.target.closest("[data-new]")) newProject(); });
 $("bNew").onclick = newProject; $("uiUser").onclick = account; $("q").oninput = draw;
 fetch("/api/me").then(async (r) => { if (r.status === 401) { location.href = "/login?next=/app"; return; } const j = await r.json(); me = j.user; projects = j.projects; paintUser(); draw(); });

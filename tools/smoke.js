@@ -44,6 +44,29 @@ async function req(method, p, body, cookie, headers = {}) {
     ok((await req("POST", base + "/admin", { type: "delete", confirm: "Test" }, b.cookie)).status === 403, "Editor darf das Projekt nicht löschen");
     ok((await req("GET", "/p/" + proj.json.id + "/", null, c)).status === 200, "Regie-Seite lädt für Mitglied");
     ok((await req("GET", "/p/" + proj.json.id + "/")).status === 302, "Regie-Seite ohne Login leitet um");
+    // v2: Verschachtelung, Pausen, API-Schlüssel, Kommandos, Trigger-Schutz, Verwaltung, Lizenzen
+    const st2 = (await req("GET", base + "/state", null, c)).json, d1 = st2.days[0], grp = d1.events.find((e) => e.type === "group"), brk = d1.events.find((e) => e.type === "break");
+    ok(grp && brk && d1.events.some((e) => e.parent === grp.id), "Beispielshow hat Gruppen, Verschachtelung und Pause");
+    const addR = await req("POST", base + "/action", { type: "add", dayId: d1.id, parent: grp.id, index: 0, data: { type: "break", title: "Umbau" } }, c);
+    ok(addR.status === 200 && addR.json.id, "Pause in Gruppe anlegen liefert Id");
+    ok((await req("POST", base + "/action", { type: "move", id: grp.id, parent: grp.id, index: 0 }, c)).status === 400, "Gruppe in sich selbst verschieben wird abgelehnt");
+    ok((await req("POST", base + "/action", { type: "targetAdd", data: { name: "Lokal", type: "http", url: U + "/api/health", method: "GET" } }, c)).status === 200, "Trigger-Ziel anlegen");
+    const tid = (await req("GET", base + "/state", null, c)).json.integrations.targets[0].id;
+    const tt = await req("POST", base + "/trigtest", { id: tid, payload: "" }, c); ok(tt.status === 400 && /privaten Netz/.test(tt.json.error), "Online-Modus blockt private Trigger-Ziele");
+    const tk = await req("POST", base + "/admin", { type: "tokenCreate", name: "Companion" }, c); ok(tk.status === 200 && tk.json.token.startsWith("tc_"), "API-Schlüssel erstellen");
+    ok((await req("GET", base + "/cmd/next?token=" + tk.json.token)).json.current?.title, "Kommando per URL mit Schlüssel");
+    ok((await req("GET", base + "/status", null, null, { authorization: "Bearer " + tk.json.token })).json.status !== "idle", "Status per Bearer-Schlüssel");
+    ok((await req("POST", base + "/action", { type: "add" }, null, { authorization: "Bearer " + tk.json.token })).status === 403, "Schlüssel darf nicht planen");
+    ok((await req("GET", base + "/status?token=tc_falsch")).status === 401, "Falscher Schlüssel wird abgelehnt");
+    ok((await req("POST", base + "/admin", { type: "tokenRevoke", id: tk.json.id }, c)).status === 200 && (await req("GET", base + "/status?token=" + tk.json.token)).status === 401, "Widerrufener Schlüssel ist ungültig");
+    const me = (await req("GET", "/api/me", null, c)).json; ok(me.user.siteAdmin === true && me.user.plan === "pro", "Erstes Konto ist Server-Admin mit Pro");
+    const meB = (await req("GET", "/api/me", null, b.cookie)).json; ok(!meB.user.siteAdmin && meB.user.plan === "free", "Zweites Konto ist Free");
+    ok((await req("POST", "/api/projects", { name: "B1" }, b.cookie)).status === 200 && (await req("POST", "/api/projects", { name: "B2" }, b.cookie)).status === 402, "Free-Plan: ein eigenes Projekt");
+    ok((await req("GET", "/api/admin/overview", null, b.cookie)).status === 403, "Verwaltung nur für Server-Admins");
+    const ov = (await req("GET", "/api/admin/overview", null, c)).json; ok(ov.stats.users === 2 && ov.users.length === 2, "Verwaltung zeigt Nutzer");
+    ok((await req("POST", "/api/admin/plan", { userId: meB.user.id, plan: "pro", months: 12 }, c)).json.user.plan === "pro" && (await req("GET", "/api/me", null, b.cookie)).json.user.plan === "pro", "Admin schaltet Pro frei");
+    ok((await req("GET", "/api/admin/overview", null, c)).json.purchases.length === 1, "Freischaltung erscheint unter Käufe");
+    ok((await req("GET", "/admin", null, c)).status === 200 && (await req("GET", "/admin", null, b.cookie)).status === 403, "Verwaltungsseite nur für Admins");
   } catch (e) { console.error(e); failed++; }
   srv.kill(); fs.rmSync(DATA, { recursive: true, force: true });
   console.log(failed ? `\n${failed} Prüfung(en) fehlgeschlagen` : "\nAlle Prüfungen bestanden");

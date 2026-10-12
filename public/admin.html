@@ -1,0 +1,82 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/app.css"><link rel="icon" href="/favicon.svg"><title>Verwaltung · Tallycall</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+.cfg { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:6px 18px; font-size:13px; } .cfg div { display:flex; justify-content:space-between; gap:10px; padding:5px 0; border-bottom:1px solid var(--line); } .cfg span:last-child { font-family:var(--mono); color:var(--fg2); text-align:right; overflow:hidden; text-overflow:ellipsis; }
+.tbl .acts { display:flex; gap:4px; justify-content:flex-end; flex-wrap:wrap; }
+</style></head>
+<body>
+<header class="appbar">
+  <a class="brand" href="/app"><img src="/logo.svg" alt="">Tallycall</a><span class="sep">/</span><span class="proj"><b>Verwaltung</b></span><span class="sp"></span>
+  <a class="btn sm ghost" href="/app">Meine Projekte</a><select id="langSel" aria-label="Sprache" style="width:auto;padding:5px 26px 5px 10px;font-size:13px"></select>
+</header>
+<div class="wrap" style="max-width:1300px">
+  <div class="stat" id="stats"></div>
+  <div class="card" style="margin-top:14px">
+    <div class="ptabs"><button data-tab="u">Nutzer</button><button data-tab="k">Käufe</button><button data-tab="p">Projekte</button><button data-tab="c">Server</button></div>
+    <div data-pane="u">
+      <div class="row2" style="margin-bottom:10px"><input id="q" placeholder="Suchen (Name, E-Mail)" style="max-width:280px"><select id="fPlan" style="width:auto"><option value="">Alle Pläne</option><option value="pro">Pro</option><option value="free">Free</option></select><span class="hint">Pro-Plan ohne Ablauf = unbegrenzt. Server-Admins haben immer Pro.</span></div>
+      <table class="tbl"><thead><tr><th>Nutzer</th><th>Plan</th><th>Projekte</th><th>Registriert</th><th>Zuletzt aktiv</th><th class="r">Aktionen</th></tr></thead><tbody id="users"></tbody></table>
+    </div>
+    <div data-pane="k" hidden>
+      <p class="hint" style="margin-top:0">Alle Freischaltungen: Zahlungen über Stripe (Webhook) und manuelle Vergaben. Betrag in der Währung der Zahlung.</p>
+      <table class="tbl"><thead><tr><th>Zeit</th><th>Nutzer</th><th>Plan</th><th>Laufzeit</th><th>Betrag</th><th>Quelle</th><th>Referenz</th></tr></thead><tbody id="purch"></tbody></table>
+    </div>
+    <div data-pane="p" hidden><table class="tbl"><thead><tr><th>Projekt</th><th>Besitzer</th><th>Mitglieder</th><th>Tage</th><th>Status</th><th>Geändert</th></tr></thead><tbody id="projs"></tbody></table></div>
+    <div data-pane="c" hidden>
+      <div class="cfg" id="cfg"></div>
+      <h3 style="margin-top:18px">Bezahlung einrichten</h3>
+      <ol class="hint" style="line-height:1.7;padding-left:18px;margin:0">
+        <li>Bei Stripe ein Produkt „Tallycall Pro“ mit Preis anlegen und einen Payment Link erzeugen. „E-Mail-Adresse erfassen“ eingeschaltet lassen. Optional in den Metadaten „months=12“ setzen, sonst gilt PLAN_MONTHS.</li>
+        <li>In der .env auf dem Server eintragen: PAY_LINK (der Stripe-Link), TALLYCALL_PLANS=on, PLAN_MONTHS=12.</li>
+        <li>Bei Stripe einen Webhook auf https://DOMAIN/api/stripe/webhook mit dem Ereignis „checkout.session.completed“ anlegen und das Signatur-Geheimnis als STRIPE_WEBHOOK_SECRET eintragen.</li>
+        <li>Container neu starten (docker compose up -d). Zahlungen schalten das Konto mit derselben E-Mail automatisch auf Pro, auch wenn es erst später registriert wird.</li>
+      </ol>
+      <p class="hint">Dein eigenes Konto ist Server-Admin, weil es das erste war oder in ADMIN_EMAIL steht. Admins sehen diese Seite und haben immer Pro.</p>
+    </div>
+  </div>
+</div>
+<script src="/i18n.js"></script>
+<script>
+const $ = (i) => document.getElementById(i), E = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const post = async (path, body) => { const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "x-cl": "1" }, body: JSON.stringify(body) }); const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || "Fehler"); return j; };
+const toast = (m, bad) => { document.querySelectorAll(".toast").forEach((t) => t.remove()); const t = document.createElement("div"); t.className = "toast" + (bad ? " bad" : ""); t.textContent = m; document.body.appendChild(t); setTimeout(() => t.remove(), 4000); };
+const dt = (t) => (t ? new Date(t).toLocaleDateString(I18N.locale, { day: "2-digit", month: "2-digit", year: "2-digit" }) : "–");
+const dtt = (t) => (t ? new Date(t).toLocaleString(I18N.locale, { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" }) : "–");
+let data = null;
+function modal(title, html, actions) {
+  const bg = document.createElement("div"); bg.className = "modalbg"; bg.innerHTML = `<div class="modal" role="dialog"><h2>${E(title)}</h2><div>${html}</div><div class="row2" style="margin-top:16px;justify-content:flex-end"></div></div>`;
+  const close = () => bg.remove(); for (const a of actions) { const b = document.createElement("button"); b.className = "btn " + (a.cls || ""); b.textContent = a.label; b.onclick = () => (a.fn ? a.fn(close, bg) : close()); bg.querySelector(".row2").appendChild(b); }
+  bg.addEventListener("mousedown", (e) => e.target === bg && close()); document.body.appendChild(bg); return bg;
+}
+// Reiter
+(() => { const host = document.querySelector(".card"); const btns = [...host.querySelectorAll("[data-tab]")], panes = [...host.querySelectorAll("[data-pane]")]; const show = (id) => { btns.forEach((b) => b.setAttribute("aria-pressed", b.dataset.tab === id)); panes.forEach((p) => (p.hidden = p.dataset.pane !== id)); }; btns.forEach((b) => (b.onclick = () => show(b.dataset.tab))); show("u"); })();
+async function load() {
+  const r = await fetch("/api/admin/overview"); if (r.status === 403 || r.status === 401) { location.href = "/app"; return; }
+  data = await r.json(); draw();
+}
+function draw() {
+  const s = data.stats, c = data.config;
+  $("stats").innerHTML = [[s.users, "Nutzer"], [s.pro, "Pro-Konten"], [s.newWeek, "neu diese Woche"], [s.projects, "Projekte"], [s.live, "laufende Shows"], [s.purchases, "Käufe"], [(s.revenue || 0).toLocaleString(I18N.locale, { minimumFractionDigits: 2 }) + " " + (s.currency || ""), "Umsatz"]].map(([v, l]) => `<div class="k"><b translate="no">${E(v)}</b><span>${l}</span></div>`).join("");
+  const q = $("q").value.toLowerCase(), fp = $("fPlan").value;
+  $("users").innerHTML = data.users.filter((u) => (!q || (u.name + " " + u.email).toLowerCase().includes(q)) && (!fp || u.plan === fp)).map((u) => `<tr data-id="${E(u.id)}"><td><b translate="no">${E(u.name)}</b> ${u.siteAdmin ? '<span class="pill pro">Server-Admin</span>' : ""} ${u.disabled ? '<span class="pill bad">gesperrt</span>' : ""}<div class="hint" translate="no">${E(u.email)}</div></td>
+    <td><span class="pill ${u.plan === "pro" ? "pro" : ""}">${u.plan === "pro" ? "Pro" : "Free"}</span>${u.planSet === "pro" && u.planUntil ? `<div class="hint">bis ${dt(u.planUntil)}</div>` : u.planSet === "pro" ? '<div class="hint">unbegrenzt</div>' : ""}</td>
+    <td translate="no">${u.projects} <span class="hint">(${u.owned} eigene)</span></td><td translate="no">${dt(u.created)}</td><td translate="no">${dt(u.lastLogin)}</td>
+    <td><div class="acts"><button class="sm" data-a="plan">Plan …</button><button class="sm ghost" data-a="admin">${u.siteAdmin ? "Admin entziehen" : "Zum Admin"}</button><button class="sm ghost" data-a="pw">Passwort</button><button class="sm ghost" data-a="disable">${u.disabled ? "Entsperren" : "Sperren"}</button><button class="sm ghost stop" data-a="del">Löschen</button></div></td></tr>`).join("") || '<tr><td colspan="6" class="hint">Keine Nutzer.</td></tr>';
+  $("purch").innerHTML = data.purchases.map((p) => `<tr><td translate="no">${dtt(p.t)}</td><td translate="no">${E(p.email)}${p.userId ? "" : ' <span class="pill">noch kein Konto</span>'}</td><td>${p.plan === "pro" ? '<span class="pill pro">Pro</span>' : '<span class="pill">Free</span>'}</td><td translate="no">${p.plan === "free" ? "–" : p.months ? p.months + " " + I18N.t("Monate") : I18N.t("unbegrenzt")}</td><td translate="no">${p.amount ? p.amount.toLocaleString(I18N.locale, { minimumFractionDigits: 2 }) + " " + E(p.currency) : "–"}</td><td>${p.source === "stripe" ? "Stripe" : I18N.t("manuell") + (p.by ? " (" + E(p.by) + ")" : "")}</td><td class="hint mono" translate="no">${E(p.ref)}</td></tr>`).join("") || '<tr><td colspan="7" class="hint">Noch keine Käufe.</td></tr>';
+  $("projs").innerHTML = data.projects.map((p) => `<tr><td><b translate="no">${E(p.name)}</b> <span class="hint mono">${E(p.id)}</span></td><td translate="no">${E(p.owner)}</td><td translate="no">${p.members}</td><td translate="no">${p.days}</td><td>${p.status === "running" ? '<span class="pill ok">läuft</span>' : p.status === "paused" ? '<span class="pill">pausiert</span>' : "–"}</td><td translate="no">${dtt(p.updated)}</td></tr>`).join("");
+  $("cfg").innerHTML = [["Version", c.version], ["Konten", c.auth ? "an" : "aus (lokal)"], ["Registrierung", c.signup ? "offen" : "geschlossen"], ["Lizenzen (TALLYCALL_PLANS)", c.plans ? "an" : "aus"], ["Payment Link (PAY_LINK)", c.payLink ? "gesetzt" : "fehlt"], ["Stripe-Webhook", c.stripe ? "eingerichtet" : "fehlt"], ["Laufzeit je Kauf", c.planMonths + " Monate"], ["Trigger-Politik", c.triggers], ["OSC-Eingang", c.oscPort || "aus"], ["Admin-E-Mails", c.adminEmails.join(", ") || "–"], ["Öffentliche Adresse", c.publicUrl || "–"], ["Datenordner", c.dataDir]].map(([k, v]) => `<div><span>${k}</span><span translate="no">${E(v)}</span></div>`).join("");
+}
+$("q").oninput = draw; $("fPlan").onchange = draw;
+$("users").onclick = async (e) => {
+  const b = e.target.closest("[data-a]"); if (!b) return; const id = b.closest("tr").dataset.id, u = data.users.find((x) => x.id === id), a = b.dataset.a;
+  try {
+    if (a === "plan") modal(I18N.t("Plan für {n}", { n: u.name }), `<label style="margin-top:0">Plan</label><select id="mPlan"><option value="pro">Pro</option><option value="free">Free</option></select><label>Laufzeit</label><select id="mMonths"><option value="12">12 Monate</option><option value="1">1 Monat</option><option value="3">3 Monate</option><option value="6">6 Monate</option><option value="24">24 Monate</option><option value="0">Unbegrenzt</option></select><div class="row2"><div style="flex:1"><label>Betrag (optional)</label><input id="mAmount" type="number" step="0.01" min="0" placeholder="0.00"></div><div style="flex:1"><label>Währung</label><input id="mCur" value="EUR" maxlength="3"></div></div><label>Notiz</label><input id="mNote" placeholder="z. B. Rechnung 2026-014">`,
+      [{ label: "Abbrechen" }, { label: "Speichern", cls: "primary", fn: async (close, bg) => { await post("/api/admin/plan", { userId: id, plan: bg.querySelector("#mPlan").value, months: Number(bg.querySelector("#mMonths").value), amount: Number(bg.querySelector("#mAmount").value), currency: bg.querySelector("#mCur").value, note: bg.querySelector("#mNote").value }); close(); toast("Gespeichert"); load(); } }]);
+    else if (a === "admin") { if (confirm(I18N.t(u.siteAdmin ? "{n} die Server-Verwaltung entziehen?" : "{n} zum Server-Admin machen? Die Person sieht dann alle Nutzer und Käufe.", { n: u.name }))) { await post("/api/admin/siteAdmin", { userId: id, on: !u.siteAdmin }); load(); } }
+    else if (a === "pw") { if (confirm(I18N.t("Neues Passwort für {n} erzeugen? Alle Sitzungen enden.", { n: u.name }))) { const r = await post("/api/admin/password", { userId: id }); modal("Neues Passwort", `<p>${I18N.t("Dieses Passwort der Person sicher mitteilen. Es wird nur jetzt angezeigt.")}</p><div class="code" translate="no"><b>${E(r.password)}</b></div>`, [{ label: "Schließen", cls: "primary" }]); } }
+    else if (a === "disable") { await post("/api/admin/disable", { userId: id, on: !u.disabled }); load(); }
+    else if (a === "del") { if (confirm(I18N.t("Konto von {n} endgültig löschen? Projekte bleiben bestehen, die Person wird aus allen entfernt.", { n: u.name }))) { await post("/api/admin/deleteUser", { userId: id }); toast("Gelöscht"); load(); } }
+  } catch (err) { toast(err.message, true); }
+};
+load();
+</script></body></html>

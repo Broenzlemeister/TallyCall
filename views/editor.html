@@ -1,47 +1,69 @@
-<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/app.css"><title>Planung</title></head>
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/app.css"><title>Planung</title>
+<style>
+.cols.ed { grid-template-columns:minmax(0,1fr) 420px; }
+@media (max-width:1100px) { .cols.ed { grid-template-columns:1fr; } }
+.daytab { display:inline-flex; align-items:center; gap:6px; } .daytab.over { outline:2px dashed var(--focus); outline-offset:2px; }
+.gwrow { grid-template-columns:28px 1fr 62px auto; }
+</style></head>
 <body>
 <header id="appbar"></header>
 <div class="stick" style="top:54px"><div class="draftbar" id="draftBar" hidden></div><div class="card" id="diffCard" hidden style="margin:0;border-radius:0;border-width:0 0 1px"></div></div>
 <div class="wrap">
-  <div class="cols">
+  <div class="cols ed">
     <section>
       <div class="card">
-        <div class="dayrow" id="tabs"></div>
-        <div id="dayCard" style="margin-top:12px"></div>
+        <div class="toolbar" style="margin-bottom:10px">
+          <div class="dayrow" id="tabs"></div><span class="sp"></span>
+          <button class="sm ghost" id="dayEdit">Tag bearbeiten</button>
+        </div>
+        <div id="dayCard" hidden style="margin-bottom:12px;padding:12px;border:1px solid var(--line2);border-radius:var(--r2);background:var(--bg2)"></div>
+        <div class="toolbar">
+          <span class="addmenu"><button id="bAdd" class="primary">+ Punkt</button><button id="bBreak">+ Pause</button><button id="bGroup">+ Gruppe</button></span>
+          <span class="hint">Ziehen am ⠿ sortiert. Auf eine Gruppenzeile ziehen legt den Punkt hinein.</span>
+          <span class="sp"></span>
+          <button class="sm ghost" id="rdCollapse">Zuklappen</button><button class="sm ghost" id="rdExpand">Aufklappen</button>
+        </div>
+        <div id="rows"></div>
+        <p class="hint" style="margin:12px 0 0" id="sumLine"></p>
       </div>
       <div class="card">
-        <table><thead><tr><th></th><th>Start</th><th>Titel</th><th>Sprecher</th><th>Dauer</th><th></th></tr></thead><tbody id="rows"></tbody></table>
-        <p class="row2" style="margin:12px 0 0"><button id="bAdd">+ Punkt</button><button id="bGroup">+ Gruppe</button><span class="hint">Neu in der Vorschau? Mit „Vorschau-Modus“ planst du ohne die laufende Show zu berühren.</span></p>
+        <div class="ptabs"><button data-tab="gw">Gewerke</button><button data-tab="st">Einstellungen</button><button data-tab="io">Import / Export</button></div>
+        <div data-pane="gw"><div id="gew"></div><button id="gAdd" class="sm" style="margin-top:6px">+ Gewerk</button><p class="hint">Reihenfolge per Ziehen am ⠿. Farbe und Kürzel erscheinen auf allen Screens.</p></div>
+        <div data-pane="st" hidden>
+          <div class="row2" style="align-items:flex-end;gap:12px">
+            <div style="flex:2;min-width:180px"><label>Zeitzone der Show</label><input id="sTz" list="tzs"><datalist id="tzs"><option>Europe/Berlin<option>Europe/Vienna<option>Europe/Zurich<option>Europe/London<option>America/New_York<option>UTC</datalist></div>
+            <div style="flex:1"><label>Gelb ab (Sek.)</label><input id="sYel" type="number" min="0"></div><div style="flex:1"><label>Rot ab (Sek.)</label><input id="sRed" type="number" min="0"></div><div style="flex:1"><label>Standby (Sek.)</label><input id="sStand" type="number" min="0"></div>
+            <div style="flex:1.4;min-width:170px"><label>Wenn die Zeit abläuft</label><select id="sEnd"><option value="over">Überzeit zählen (Standard)</option><option value="next">Automatisch weiter</option><option value="stop">Bei 00:00 anhalten</option></select></div>
+          </div>
+          <p class="hint">Gilt für alle Punkte ohne eigene Einstellung. Im Roll-Modus zählt immer die Uhr.</p>
+        </div>
+        <div data-pane="io" hidden><div class="row2"><button id="bExport">Export (JSON)</button><button id="bImport">Import (JSON)</button><input id="file" type="file" accept=".json" hidden></div><p class="hint">Der Export enthält Tage, Punkte, Cues, Gewerke und Einstellungen. Der Import ersetzt den Plan dieses Projekts.</p></div>
       </div>
     </section>
     <aside>
+      <div class="card insp" id="insp"><h3>Details</h3><p class="hint">Einen Punkt in der Liste anklicken, um ihn zu bearbeiten.</p></div>
       <div class="card"><h3>Vorschau-Modus</h3>
         <p class="hint" style="margin-top:0">Änderungen landen in einem Entwurf. Die laufende Show bleibt unberührt, bis du „Live schalten“ drückst.</p>
         <button id="bDraft" class="primary">✎ Vorschau-Modus starten</button><span class="hint" id="draftOn" hidden>Aktiv. Siehe gelbe Leiste oben.</span></div>
-      <div class="card"><h3>Gewerke</h3><div id="gew"></div><button id="gAdd" class="sm">+ Gewerk</button></div>
-      <div class="card"><h3>Einstellungen</h3>
-        <label>Zeitzone der Show</label><input id="sTz" list="tzs"><datalist id="tzs"><option>Europe/Berlin<option>Europe/Vienna<option>Europe/Zurich<option>Europe/London<option>America/New_York<option>UTC</datalist>
-        <div class="row2"><div style="flex:1"><label>Gelb ab (Sek.)</label><input id="sYel" type="number" min="0"></div><div style="flex:1"><label>Rot ab (Sek.)</label><input id="sRed" type="number" min="0"></div><div style="flex:1"><label>Standby (Sek.)</label><input id="sStand" type="number" min="0"></div></div>
-        <div class="row2" style="margin-top:14px"><button id="bExport">Export</button><button id="bImport">Import</button><input id="file" type="file" accept=".json" hidden></div>
-      </div>
     </aside>
   </div>
 </div>
-<script src="/i18n.js"></script><script src="/shared.js"></script><script src="/common.js"></script><script src="/ui.js"></script>
+<script src="/i18n.js"></script><script src="/shared.js"></script><script src="/common.js"></script><script src="/ui.js"></script><script src="/rundown.js"></script>
 <script>
 const $ = (i) => document.getElementById(i), E = CL.esc, api = (a) => CL.api(a).catch((e) => e.message !== "abgebrochen" && UI.toast(e.message, true));
-UI.bar("editor");
-let dayId = null, sig = "", open = new Set(), dragId = null;
+UI.bar("editor"); UI.tabs(document.querySelectorAll("section .card")[1], "editor-bottom");
+let dayId = null, sig = "", selId = CL.params.get("sel") || null, inspSig = "", dayOpen = false;
+if (selId) setTimeout(() => { const f = findP(selId); if (f) { dayId = f.day.id; sig = ""; rd.select(selId); rd.reveal(selId); } }, 800);
 let draftData = null, draftRev = -1, draftErr = false, askMode = "", showDiff = false;
 // Im Vorschau-Modus arbeitet der Editor auf dem Entwurf, sonst auf dem Live-Stand
 const plan = (s) => (s.hasDraft && draftData ? draftData : s);
 const day = (s) => plan(s).days.find((d) => d.id === dayId) || plan(s).days[0];
-const findP = (id) => { for (const d of plan(CL.state).days) { const e = d.events.find((x) => x.id === id); if (e) return e; } return null; };
+const findP = (id) => { for (const d of plan(CL.state).days) { const e = d.events.find((x) => x.id === id); if (e) return { e, day: d }; } return null; };
 async function syncDraft(s) {
-  if (!s.hasDraft) { if (draftData) sig = ""; draftData = null; draftRev = -1; draftErr = false; return; }
+  if (!s.hasDraft) { if (draftData) { sig = ""; inspSig = ""; } draftData = null; draftRev = -1; draftErr = false; return; }
   if (draftRev === s.draftRev) return;
   draftRev = s.draftRev;
-  try { const r = await fetch(CL.ctx.api + "/draft"); if (!r.ok) throw 0; const j = await r.json(); draftData = j.draft; draftErr = false; sig = ""; } catch (_) { draftErr = true; }
+  try { const r = await fetch(CL.ctx.api + "/draft"); if (!r.ok) throw 0; const j = await r.json(); draftData = j.draft; draftErr = false; sig = ""; inspSig = ""; } catch (_) { draftErr = true; }
 }
 // Änderungen Entwurf gegenüber Live als Liste (+ neu, ~ geändert, − gelöscht)
 function diff(live, d) {
@@ -87,96 +109,141 @@ $("draftBar").addEventListener("click", (e) => {
   else if (id === "bDiscYes") { askMode = ""; api({ type: "draftDiscard" }); }
 });
 
-// ---- Tage, Einstellungen, Export ----
+// ---- Tage (Tabs sind auch Ablageziele beim Ziehen), Einstellungen, Export ----
 $("tabs").onclick = (e) => { const b = e.target.closest("button"); if (!b) return; if (b.dataset.day) { dayId = b.dataset.day; sig = ""; } else api({ type: "dayAdd" }); };
+$("tabs").addEventListener("dragover", (e) => { const b = e.target.closest("[data-day]"); if (!b || b.dataset.day === dayId) return; e.preventDefault(); b.classList.add("over"); });
+$("tabs").addEventListener("dragleave", (e) => e.target.closest("[data-day]")?.classList.remove("over"));
+$("tabs").addEventListener("drop", (e) => { const b = e.target.closest("[data-day]"); if (!b) return; e.preventDefault(); b.classList.remove("over"); const id = e.dataTransfer.getData("text/plain"); if (id) api({ type: "move", id, dayId: b.dataset.day, parent: "" }); });
+$("dayEdit").onclick = () => { dayOpen = !dayOpen; $("dayCard").hidden = !dayOpen; };
 const setting = (id, key, conv) => ($(id).onchange = () => api({ type: "settings", data: { [key]: conv($(id).value) } }));
-setting("sTz", "timezone", String); setting("sYel", "warnYellow", Number); setting("sRed", "warnRed", Number); setting("sStand", "standby", Number);
+setting("sTz", "timezone", String); setting("sYel", "warnYellow", Number); setting("sRed", "warnRed", Number); setting("sStand", "standby", Number); setting("sEnd", "endAction", String);
 $("bExport").onclick = () => { const s = CL.state, p = plan(s), a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([JSON.stringify({ settings: p.settings, gewerke: p.gewerke, days: p.days }, null, 2)], { type: "application/json" })); a.download = "ablauf-" + s.show.name.replace(/\W+/g, "_") + ".json"; a.click(); };
 $("bImport").onclick = () => $("file").click();
 $("file").onchange = async () => { try { await api({ type: "import", data: JSON.parse(await $("file").files[0].text()) }); sig = ""; } catch (e) { UI.toast("Datei ungültig", true); } $("file").value = ""; };
 $("dayCard").addEventListener("change", (e) => { const f = e.target.dataset.f; if (!f) return; let v = e.target.value; if (f === "startTime") v = CL.parseHHMM(v); api({ type: "dayUpdate", id: dayId, data: { [f]: v } }); });
-$("dayCard").addEventListener("click", (e) => { if (e.target.id === "dayDel" && confirm(I18N.t("Diesen Tag mit allen Punkten löschen?"))) { api({ type: "dayDelete", id: dayId }); dayId = null; } });
+$("dayCard").addEventListener("click", (e) => {
+  if (e.target.id === "dayDel" && confirm(I18N.t("Diesen Tag mit allen Punkten löschen?"))) { api({ type: "dayDelete", id: dayId }); dayId = null; }
+  if (e.target.id === "dayLeft" || e.target.id === "dayRight") { const i = plan(CL.state).days.findIndex((d) => d.id === dayId); api({ type: "dayMove", id: dayId, to: i + (e.target.id === "dayLeft" ? -1 : 1) }); }
+});
 $("gAdd").onclick = () => api({ type: "gewerkAdd" });
 $("gew").addEventListener("change", (e) => { const row = e.target.closest("[data-g]"), f = e.target.dataset.f; if (row && f) api({ type: "gewerkUpdate", id: row.dataset.g, data: { [f]: e.target.value } }); });
 $("gew").addEventListener("click", (e) => { const b = e.target.closest("[data-del]"); if (b && confirm(I18N.t("Gewerk und alle seine Cues löschen?"))) api({ type: "gewerkDelete", id: b.dataset.del }); });
+let gDrag = null;
+$("gew").addEventListener("dragstart", (e) => { gDrag = e.target.closest("[data-g]")?.dataset.g; });
+$("gew").addEventListener("dragover", (e) => { if (gDrag) e.preventDefault(); });
+$("gew").addEventListener("drop", (e) => { const row = e.target.closest("[data-g]"); if (!row || !gDrag) return; e.preventDefault(); const to = plan(CL.state).gewerke.findIndex((g) => g.id === row.dataset.g); api({ type: "gewerkMove", id: gDrag, to }); gDrag = null; });
 
 // ---- Ablauf ----
-$("bAdd").onclick = () => api({ type: "add", dayId });
-$("bGroup").onclick = () => api({ type: "add", dayId, data: { type: "group" } });
-function cueRows(e, s) {
-  return e.cues.map((c) => `<div class="cuerow" data-cue="${E(c.id)}"><select data-cf="gewerk">${plan(s).gewerke.map((g) => `<option translate="no" value="${E(g.id)}"${g.id === c.gewerk ? " selected" : ""}>${E(g.name)}</option>`).join("")}${c.gewerk ? "" : '<option value="" selected>– Gewerk –</option>'}</select>
-    <input data-cf="offset" value="${CL.fmtDur(c.offset)}" title="Zeit nach Beginn des Punkts (mm:ss)"><input data-cf="text" value="${E(c.text)}" placeholder="Cue, z. B. Licht Cue 12 Bühne hell"><button class="sm stop" data-a="cuedel" title="Cue löschen">✕</button></div>`).join("");
+const rd = Rundown.create($("rows"), { editable: true, key: "editor:" + CL.ctx.pid, onAction: (a) => api(a), onSelect: (id) => { selId = id; inspSig = ""; renderInsp(CL.state); } });
+$("rdCollapse").onclick = () => rd.collapseAll(); $("rdExpand").onclick = () => rd.expandAll();
+async function addItem(type) {
+  const sel = selId && findP(selId), after = sel && sel.day.id === dayId ? selId : undefined;
+  try { const r = await CL.api({ type: "add", dayId, after, data: { type } }); if (r.id) { selId = r.id; inspSig = ""; rd.select(r.id); setTimeout(() => $("insp").querySelector('[data-f="title"]')?.select(), 150); } } catch (e) { return e.message !== "abgebrochen" && UI.toast(e.message, true); }
 }
+$("bAdd").onclick = () => addItem("event"); $("bBreak").onclick = () => addItem("break"); $("bGroup").onclick = () => addItem("group");
+document.addEventListener("keydown", (e) => {
+  if (e.target.closest("input,textarea,select") || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === "n") { e.preventDefault(); addItem("event"); } else if (e.key === "p") { e.preventDefault(); addItem("break"); } else if (e.key === "g") { e.preventDefault(); addItem("group"); }
+  else if ((e.key === "Delete" || e.key === "Backspace") && selId) { const f = findP(selId); if (f && confirm(I18N.t("„{t}“ löschen?", { t: f.e.title }))) api({ type: "delete", id: selId, withChildren: true }); }
+});
+
+// ---- Inspector ----
+const ENDS = [["", "Wie Einstellungen"], ["over", "Überzeit zählen"], ["next", "Automatisch weiter"], ["stop", "Bei 00:00 anhalten"]];
+function renderInsp(s) {
+  const box = $("insp"), p = plan(s), f = selId && findP(selId);
+  if (!f) { const h = '<h3>Details</h3><p class="hint">Einen Punkt in der Liste anklicken, um ihn zu bearbeiten.</p><p class="hint">Tasten: N = neuer Punkt, P = Pause, G = Gruppe, Entf = löschen</p>'; if (inspSig !== h) { box.innerHTML = h; inspSig = h; } return; }
+  const e = f.e, key = JSON.stringify([e, p.gewerke, p.lowers, s.integrations?.targets, f.day.id]);
+  if (key === inspSig) return;
+  if (document.activeElement && box.contains(document.activeElement) && document.activeElement.matches("input,textarea,select")) return;
+  inspSig = key;
+  const isG = e.type === "group", targets = s.integrations?.targets || [];
+  const row = CLS.schedule(f.day).find((r) => r.e.id === e.id);
+  const tOpts = (cur) => `<option value="">– Ziel –</option>` + targets.map((t) => `<option translate="no" value="${E(t.id)}"${t.id === cur ? " selected" : ""}>${E(t.name)} (${t.type.toUpperCase()})</option>`).join("");
+  const actRows = (list, withOn) => list.map((a, i) => `<div class="actrow" data-ai="${i}">${withOn ? `<select data-af="on"><option value="start"${a.on !== "end" ? " selected" : ""}>Beim Start</option><option value="end"${a.on === "end" ? " selected" : ""}>Am Ende</option></select>` : "<span class=\"pill\">⚡</span>"}<select data-af="targetId">${tOpts(a.targetId)}</select><input data-af="payload" value="${E(a.payload)}" placeholder="Nachricht, z. B. /pixera/play 3"><button class="sm ghost stop" data-a="actdel">✕</button></div>`).join("");
+  box.innerHTML = `<h3><span>${isG ? "Gruppe" : e.type === "break" ? "Pause" : "Punkt"}</span><span class="row2"><span class="hint mono">${row && !row.group ? CL.hhmm(row.start) + "–" + CL.hhmm(row.end) : ""}</span><button class="sm ghost" data-a="close" title="Schließen">✕</button></span></h3>
+    <label style="margin-top:0">Titel</label><input data-f="title" value="${E(e.title)}" translate="no">
+    ${isG ? "" : `<div class="f2"><div><label>Untertitel</label><input data-f="subtitle" value="${E(e.subtitle)}" translate="no"></div><div><label>Sprecher / Personen</label><input data-f="presenter" value="${E(e.presenter)}" translate="no"></div></div>`}
+    <label>Farbe</label><div id="pal"></div>
+    ${isG ? `<p class="hint">Gruppen fassen Punkte zusammen. Zeiten ergeben sich aus dem Inhalt. Übersprungene Gruppen überspringen alle Inhalte.</p><label class="sw"><input type="checkbox" data-f="skip" ${e.skip ? "checked" : ""}> Gruppe überspringen</label>` : `
+    <div class="f3"><div><label>Dauer</label><input data-f="duration" class="mono" value="${CL.fmtDur(e.duration)}" title="mm:ss, h:mm:ss oder Minuten"></div>
+      <div><label>Start</label><select data-f="start"><option value="chain"${e.start !== "fixed" ? " selected" : ""}>Nach dem Vorgänger</option><option value="fixed"${e.start === "fixed" ? " selected" : ""}>Feste Uhrzeit</option></select></div>
+      <div><label>Uhrzeit</label><input data-f="fixedStart" type="time" value="${CL.hhmm(e.start === "fixed" ? e.fixedStart : row?.start || 0)}" ${e.start === "fixed" ? "" : "disabled"}></div></div>
+    <div class="f2"><div><label>Typ</label><select data-f="type"><option value="event"${e.type === "event" ? " selected" : ""}>Programmpunkt</option><option value="break"${e.type === "break" ? " selected" : ""}>Pause</option></select></div>
+      <div><label>Wenn die Zeit abläuft</label><select data-f="endAction">${ENDS.map(([v, l]) => `<option value="${v}"${e.endAction === v ? " selected" : ""}>${l}</option>`).join("")}</select></div></div>
+    <label>Bauchbinde beim Start einblenden</label><select data-f="lowerId"><option value="">– keine –</option>${(p.lowers || s.lowers).map((q) => `<option translate="no" value="${E(q.id)}"${q.id === e.lowerId ? " selected" : ""}>${E(q.title)}${q.subtitle ? " · " + E(q.subtitle) : ""}</option>`).join("")}</select>
+    <label class="sw" style="margin-top:10px"><input type="checkbox" data-f="skip" ${e.skip ? "checked" : ""}> Überspringen (bleibt im Plan, läuft nicht)</label>
+    <label>Notiz für die Crew</label><textarea data-f="note" rows="2" translate="no">${E(e.note)}</textarea>
+    <label>Cues <span class="hint">(Zeit nach Beginn des Punkts, ziehen sortiert)</span></label>
+    <div class="cuelist" id="cuelist">${e.cues.map((c, i) => { const g = p.gewerke.find((x) => x.id === c.gewerk); return `<div class="cue2" data-ci="${i}" draggable="true" style="--c:${E(g?.color || "")}"><span class="hd">⠿</span><select data-cf="gewerk">${c.gewerk ? "" : '<option value="" selected>– Gewerk –</option>'}${p.gewerke.map((x) => `<option translate="no" value="${E(x.id)}"${x.id === c.gewerk ? " selected" : ""}>${E(x.name)}</option>`).join("")}</select><input data-cf="offset" class="mono" value="${CL.fmtDur(c.offset)}"><input data-cf="text" value="${E(c.text)}" placeholder="z. B. Licht Cue 12" translate="no"><span class="row2" style="gap:2px"><button class="sm ghost" data-a="cueact" title="Trigger an diesem Cue">⚡${c.actions?.length ? c.actions.length : ""}</button><button class="sm ghost stop" data-a="cuedel">✕</button></span>
+      ${c.actions?.length ? `<div class="more">${c.actions.map((a, j) => `<select data-caf="targetId" data-aj="${j}">${tOpts(a.targetId)}</select><input data-caf="payload" data-aj="${j}" value="${E(a.payload)}" placeholder="z. B. /pixera/play 3"><button class="sm ghost stop" data-a="cueactdel" data-aj="${j}">✕</button>`).join("")}</div>` : ""}</div>`; }).join("")}</div>
+    <p class="row2" style="margin:6px 0 0"><button class="sm" data-a="cueadd">+ Cue</button></p>
+    <label>Trigger an diesem Punkt <span class="hint">(Ziele unter „Trigger“ anlegen)</span></label>
+    <div id="actlist">${actRows(e.actions || [], true)}</div>
+    <p class="row2" style="margin:6px 0 0"><button class="sm" data-a="actadd" ${targets.length ? "" : "disabled"}>+ Trigger</button>${targets.length ? "" : `<a class="hint" href="${CL.ctx.base}/integrations">Noch keine Ziele. Jetzt anlegen →</a>`}</p>`}
+    ${p.days.length > 1 ? `<label>Verschieben in Tag</label><select data-a="moveday"><option value="">–</option>${p.days.filter((x) => x.id !== f.day.id).map((x) => `<option translate="no" value="${E(x.id)}">${E(x.name)}</option>`).join("")}</select>` : ""}`;
+  UI.palette(e.color, (c) => api({ type: "update", id: e.id, data: { color: c } }), { el: box.querySelector("#pal") });
+}
+const collectCues = () => [...document.querySelectorAll("#cuelist .cue2")].map((r, i) => { const e = findP(selId).e, old = e.cues[Number(r.dataset.ci)] || {}; return { id: old.id, gewerk: r.querySelector('[data-cf="gewerk"]').value, offset: CLS.parseDur(r.querySelector('[data-cf="offset"]').value) ?? 0, text: r.querySelector('[data-cf="text"]').value, actions: [...r.querySelectorAll('[data-caf="targetId"]')].map((sel, j) => ({ targetId: sel.value, payload: r.querySelector(`[data-caf="payload"][data-aj="${j}"]`).value })) }; });
+const collectActs = () => [...document.querySelectorAll("#actlist .actrow")].map((r) => ({ on: r.querySelector('[data-af="on"]').value, targetId: r.querySelector('[data-af="targetId"]').value, payload: r.querySelector('[data-af="payload"]').value }));
+$("insp").addEventListener("change", (ev) => {
+  const t = ev.target, f = selId && findP(selId); if (!f) return;
+  if (t.dataset.cf || t.dataset.caf) return api({ type: "update", id: f.e.id, data: { cues: collectCues() } });
+  if (t.dataset.af) return api({ type: "update", id: f.e.id, data: { actions: collectActs() } });
+  if (t.dataset.a === "moveday") { if (t.value) api({ type: "move", id: f.e.id, dayId: t.value, parent: "" }); return; }
+  const k = t.dataset.f; if (!k) return;
+  let v = t.type === "checkbox" ? t.checked : t.value;
+  if (k === "duration") { v = CLS.parseDur(v); if (v == null) { inspSig = ""; return renderInsp(CL.state); } }
+  if (k === "fixedStart") v = CLS.parseHHMM(v);
+  const data = { [k]: v };
+  if (k === "start" && v === "fixed") data.fixedStart = CLS.schedule(f.day).find((r) => r.e.id === f.e.id)?.start || 0;
+  if (k === "type") data.color = v === "break" ? CLS.COLOR.break : f.e.color === CLS.COLOR.break ? CLS.COLOR.event : f.e.color;
+  api({ type: "update", id: f.e.id, data });
+});
+$("insp").addEventListener("click", (ev) => {
+  const b = ev.target.closest("[data-a]"); if (!b) return; const f = selId && findP(selId); if (!f) return;
+  const a = b.dataset.a, e = f.e;
+  if (a === "close") { selId = null; rd.select(null); inspSig = ""; renderInsp(CL.state); }
+  else if (a === "cueadd") api({ type: "update", id: e.id, data: { cues: [...collectCues(), { gewerk: plan(CL.state).gewerke[0]?.id || "", offset: 0, text: "", actions: [] }] } });
+  else if (a === "cuedel") { const i = Number(b.closest(".cue2").dataset.ci); api({ type: "update", id: e.id, data: { cues: collectCues().filter((_, j) => j !== i) } }); }
+  else if (a === "cueact") { const i = Number(b.closest(".cue2").dataset.ci), cues = collectCues(); const t = CL.state.integrations?.targets?.[0]; if (!t) return UI.toast(I18N.t("Erst ein Trigger-Ziel anlegen (Reiter „Trigger“)"), true); cues[i].actions.push({ targetId: t.id, payload: "" }); api({ type: "update", id: e.id, data: { cues } }); }
+  else if (a === "cueactdel") { const i = Number(b.closest(".cue2").dataset.ci), j = Number(b.dataset.aj), cues = collectCues(); cues[i].actions.splice(j, 1); api({ type: "update", id: e.id, data: { cues } }); }
+  else if (a === "actadd") api({ type: "update", id: e.id, data: { actions: [...collectActs(), { on: "start", targetId: CL.state.integrations.targets[0]?.id, payload: "" }] } });
+  else if (a === "actdel") { const i = Number(b.closest(".actrow").dataset.ai); api({ type: "update", id: e.id, data: { actions: collectActs().filter((_, j) => j !== i) } }); }
+});
+// Cues per Ziehen sortieren
+let cueDrag = null;
+$("insp").addEventListener("dragstart", (e) => { const r = e.target.closest(".cue2"); if (!r) return; cueDrag = Number(r.dataset.ci); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", "cue"); e.stopPropagation(); setTimeout(() => r.classList.add("dragging"), 0); });
+$("insp").addEventListener("dragover", (e) => { const r = e.target.closest(".cue2"); if (r && cueDrag != null) { e.preventDefault(); document.querySelectorAll(".cue2.over").forEach((x) => x.classList.remove("over")); r.classList.add("over"); } });
+$("insp").addEventListener("drop", (e) => { const r = e.target.closest(".cue2"); if (!r || cueDrag == null) return; e.preventDefault(); const to = Number(r.dataset.ci), cues = collectCues(), [m] = cues.splice(cueDrag, 1); cues.splice(to, 0, m); api({ type: "update", id: selId, data: { cues } }); cueDrag = null; });
+$("insp").addEventListener("dragend", () => { cueDrag = null; document.querySelectorAll(".cue2.over,.cue2.dragging").forEach((x) => x.classList.remove("over", "dragging")); });
+
 function render(s) {
   if (s.hasDraft && !draftData) return;
-  const p = plan(s), d = day(s); dayId = d.id;
-  const key = JSON.stringify([p.days, p.gewerke, dayId, [...open], s.hasDraft]);
-  if (key === sig) return;
-  if (document.activeElement && document.activeElement.closest("#rows,#dayCard,#gew") && document.activeElement.matches("input,textarea,select")) return;
-  sig = key;
-  $("tabs").innerHTML = p.days.map((x) => `<button translate="no" data-day="${E(x.id)}" aria-pressed="${x.id === d.id}">${E(x.name)}</button>`).join("") + '<button data-add class="ghost">+ Tag</button>';
-  $("dayCard").innerHTML = `<div class="row2" style="align-items:flex-end"><div style="flex:2;min-width:160px"><label style="margin-top:0">Name des Tages</label><input data-f="name" value="${E(d.name)}"></div>
-    <div style="flex:1;min-width:140px"><label style="margin-top:0">Datum</label><input data-f="date" type="date" value="${E(d.date)}"></div>
-    <div style="flex:1;min-width:110px"><label style="margin-top:0">Beginn (Uhrzeit)</label><input data-f="startTime" type="time" value="${CL.hhmm(d.startTime)}"></div>
-    <button id="dayDel" class="sm stop">Tag löschen</button></div>`;
-  $("gew").innerHTML = p.gewerke.map((g) => `<div class="gwrow" data-g="${E(g.id)}"><input type="color" data-f="color" value="${E(g.color)}"><input data-f="name" value="${E(g.name)}"><input data-f="short" value="${E(g.short)}" maxlength="4" title="Kürzel"><button class="sm stop" data-del="${E(g.id)}">✕</button></div>`).join("");
-  const rows = CLS.schedule(d), sums = {}; let gi = null;
-  rows.forEach((r, i) => { if (r.group) { gi = i; sums[i] = 0; } else if (gi !== null && !r.skip) sums[gi] += r.e.duration; });
-  $("rows").innerHTML = rows.map((r, i) => { const e = r.e, id = E(e.id), isOpen = open.has(e.id);
-    if (r.group) return `<tr data-id="${id}" class="group"><td><span class="handle">⠿</span></td><td class="tm">${CL.hhmm(r.start)}</td><td colspan="3"><input data-f="title" value="${E(e.title)}" style="font-weight:600"></td><td style="white-space:nowrap"><span class="tm mono">${CL.fmtDur(sums[i] || 0)}</span> <button class="sm stop" data-a="del">✕</button></td></tr>`;
-    return `<tr data-id="${id}" class="${e.skip ? "skipped" : ""}"><td><span class="handle" title="Ziehen zum Sortieren">⠿</span></td>
-      <td class="tm" style="min-width:96px">${e.skip ? "–" : CL.hhmm(r.start)}${r.over ? ` <span class="warn" title="Der Punkt davor reicht ${CL.fmtDur(r.over)} in den festen Start hinein">⚠</span>` : ""}
-        <button class="pin ${e.start === "fixed" ? "on" : ""}" data-a="pin" title="Feste Uhrzeit (startet immer zu dieser Zeit)">📌</button>
-        ${e.start === "fixed" ? `<input type="time" data-f="fixedStart" value="${CL.hhmm(e.fixedStart)}" style="width:104px;margin-top:3px">` : ""}</td>
-      <td><div class="row2"><input type="color" data-f="color" value="${E(e.color)}"><input data-f="title" value="${E(e.title)}" style="flex:1;min-width:120px"></div>
-        <input data-f="subtitle" value="${E(e.subtitle)}" placeholder="Untertitel" style="margin-top:4px"></td>
-      <td><input data-f="presenter" value="${E(e.presenter)}" style="min-width:90px"></td>
-      <td><input data-f="duration" class="mono" value="${CL.fmtDur(e.duration)}" style="width:84px" title="mm:ss oder Minuten"></td>
-      <td style="white-space:nowrap"><button class="sm" data-a="open" title="Cues und Notizen">${isOpen ? "▾" : "▸"} ${e.cues.length}</button> <button class="sm" data-a="skip" title="Überspringen">${e.skip ? "↩" : "⤼"}</button> <button class="sm" data-a="dup" title="Duplizieren">⧉</button> <button class="sm stop" data-a="del" title="Löschen">✕</button></td></tr>
-      ${isOpen ? `<tr class="detail" data-id="${id}"><td></td><td colspan="5"><div class="cues">${cueRows(e, s)}</div>
-        <p class="row2"><button class="sm" data-a="cueadd">+ Cue</button>${p.days.length > 1 ? `<span class="hint">Verschieben nach:</span><select data-a="moveday" style="width:auto"><option value="">–</option>${p.days.filter((x) => x.id !== d.id).map((x) => `<option translate="no" value="${E(x.id)}">${E(x.name)}</option>`).join("")}</select>` : ""}</p>
-        <label>Notiz für Crew</label><textarea data-f="note" rows="2">${E(e.note)}</textarea></td></tr>` : ""}`; }).join("");
+  const p = plan(s), d = day(s); dayId = d.id; rd.dayId = d.id;
+  const key = JSON.stringify([p.days, p.gewerke, dayId, s.hasDraft, dayOpen]);
+  if (key !== sig) {
+    if (!(document.activeElement && document.activeElement.closest("#dayCard,#gew") && document.activeElement.matches("input,textarea,select"))) {
+      sig = key;
+      $("tabs").innerHTML = p.days.map((x) => `<button translate="no" class="daytab" data-day="${E(x.id)}" aria-pressed="${x.id === d.id}">${E(x.name)} <span class="hint" style="font-size:11px">${E(x.date.slice(5).split("-").reverse().join("."))}</span></button>`).join("") + '<button data-add class="ghost">+ Tag</button>';
+      const di = p.days.indexOf(d);
+      $("dayCard").innerHTML = `<div class="row2" style="align-items:flex-end"><div style="flex:2;min-width:160px"><label style="margin-top:0">Name des Tages</label><input data-f="name" value="${E(d.name)}" translate="no"></div>
+        <div style="flex:1;min-width:140px"><label style="margin-top:0">Datum</label><input data-f="date" type="date" value="${E(d.date)}"></div>
+        <div style="flex:1;min-width:110px"><label style="margin-top:0">Beginn (Uhrzeit)</label><input data-f="startTime" type="time" value="${CL.hhmm(d.startTime)}"></div>
+        <span class="row2"><button id="dayLeft" class="sm" ${di === 0 ? "disabled" : ""} title="Nach links">←</button><button id="dayRight" class="sm" ${di === p.days.length - 1 ? "disabled" : ""} title="Nach rechts">→</button><button id="dayDel" class="sm stop">Tag löschen</button></span></div>`;
+      $("gew").innerHTML = p.gewerke.map((g) => `<div class="gwrow" data-g="${E(g.id)}" draggable="true"><span class="handle">⠿</span><input data-f="name" value="${E(g.name)}" translate="no"><input data-f="short" value="${E(g.short)}" maxlength="4" title="Kürzel" translate="no"><span class="row2" style="gap:4px"><input type="color" data-f="color" value="${E(g.color)}"><button class="sm stop" data-del="${E(g.id)}">✕</button></span></div>`).join("");
+    }
+  }
+  const rows = CLS.schedule(d);
+  rd.render(rows, s, { currentId: s.runtime.currentId });
+  const evs = rows.filter((r) => !r.group && !r.skip), end = evs.length ? Math.max(...evs.map((r) => r.end)) : d.startTime;
+  const sum = `${evs.length} ${I18N.t("Punkte")} · ${I18N.t("Beginn")} ${CL.hhmm(d.startTime)} · ${I18N.t("Ende")} ${CL.hhmm(end)} · ${I18N.t("Dauer")} ${CL.fmtDur(Math.max(0, end - d.startTime))}${rows.filter((r) => r.brk && !r.skip).length ? ` · ${rows.filter((r) => r.brk && !r.skip).length} ${I18N.t("Pausen")}` : ""}`;
+  if ($("sumLine").textContent !== sum) $("sumLine").textContent = sum;
 }
-const evOf = (el) => { const id = el.closest("tr")?.dataset.id; return id ? findP(id) : null; };
-const collectCues = (tr) => [...tr.querySelectorAll("[data-cue]")].map((r) => ({ id: r.dataset.cue, gewerk: r.querySelector('[data-cf="gewerk"]').value, offset: CLS.parseDur(r.querySelector('[data-cf="offset"]').value) ?? 0, text: r.querySelector('[data-cf="text"]').value }));
-$("rows").addEventListener("change", (ev) => {
-  const t = ev.target, e = evOf(t); if (!e) return;
-  if (t.dataset.cf) return api({ type: "update", id: e.id, data: { cues: collectCues(t.closest("tr")) } });
-  if (t.dataset.a === "moveday") { if (t.value) api({ type: "move", id: e.id, dayId: t.value }); return; }
-  const f = t.dataset.f; if (!f) return;
-  let v = t.value;
-  if (f === "duration") { v = CLS.parseDur(v); if (v == null) { sig = ""; return render(CL.state); } }
-  if (f === "fixedStart") v = CLS.parseHHMM(v);
-  api({ type: "update", id: e.id, data: { [f]: v } });
-});
-$("rows").addEventListener("click", (ev) => {
-  const b = ev.target.closest("button"); if (!b || !b.dataset.a) return;
-  const e = evOf(b), a = b.dataset.a; if (!e) return;
-  if (a === "open") { open.has(e.id) ? open.delete(e.id) : open.add(e.id); sig = ""; }
-  else if (a === "skip") api({ type: "update", id: e.id, data: { skip: !e.skip } });
-  else if (a === "pin") { const r = CLS.schedule(day(CL.state)).find((x) => x.e.id === e.id); api({ type: "update", id: e.id, data: e.start === "fixed" ? { start: "chain" } : { start: "fixed", fixedStart: r.start } }); }
-  else if (a === "dup") api({ type: "add", dayId, after: e.id, data: { ...e, start: "chain", skip: false } });
-  else if (a === "del") { if (confirm(I18N.t("„{t}“ löschen?", { t: e.title }))) api({ type: "delete", id: e.id }); }
-  else if (a === "cueadd") { open.add(e.id); api({ type: "update", id: e.id, data: { cues: [...collectCues(b.closest("tr")), { gewerk: plan(CL.state).gewerke[0]?.id || "", offset: 0, text: "" }] } }); }
-  else if (a === "cuedel") { const row = b.closest("[data-cue]"); row.remove(); api({ type: "update", id: e.id, data: { cues: collectCues(document.querySelector(`tr.detail[data-id="${e.id}"]`)) } }); }
-});
-// Sortieren per Drag & Drop am Griff
-$("rows").addEventListener("mousedown", (ev) => { const tr = ev.target.closest("tr"); if (tr) tr.draggable = !!ev.target.closest(".handle"); });
-$("rows").addEventListener("dragstart", (ev) => { dragId = ev.target.dataset?.id; ev.dataTransfer.effectAllowed = "move"; ev.dataTransfer.setData("text/plain", dragId || ""); });
-$("rows").addEventListener("dragover", (ev) => { ev.preventDefault(); document.querySelectorAll(".drag-over").forEach((r) => r.classList.remove("drag-over")); ev.target.closest("tr")?.classList.add("drag-over"); });
-$("rows").addEventListener("drop", (ev) => {
-  ev.preventDefault(); const tr = ev.target.closest("tr"); if (!tr || !dragId) return;
-  const d = day(CL.state), to = d.events.findIndex((x) => x.id === tr.dataset.id);
-  api({ type: "move", id: dragId, dayId: d.id, to }); dragId = null; sig = "";
-});
-$("rows").addEventListener("dragend", () => document.querySelectorAll(".drag-over").forEach((r) => r.classList.remove("drag-over")));
-
 const setIfIdle = (el, v) => { if (document.activeElement !== el) el.value = v; };
 CL.run((s) => {
-  syncDraft(s); render(s); renderDraftBar(s);
+  syncDraft(s); render(s); renderDraftBar(s); renderInsp(s);
   const p = plan(s);
-  setIfIdle($("sTz"), p.settings.timezone); setIfIdle($("sYel"), p.settings.warnYellow); setIfIdle($("sRed"), p.settings.warnRed); setIfIdle($("sStand"), p.settings.standby);
-  document.querySelectorAll("#rows tr").forEach((tr) => tr.classList.toggle("cur", tr.dataset.id === s.runtime.currentId));
+  setIfIdle($("sTz"), p.settings.timezone); setIfIdle($("sYel"), p.settings.warnYellow); setIfIdle($("sRed"), p.settings.warnRed); setIfIdle($("sStand"), p.settings.standby); setIfIdle($("sEnd"), p.settings.endAction || "over");
 });
 </script></body></html>

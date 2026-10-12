@@ -20,7 +20,7 @@ CL.run((s) => {
   } else {
     const day = CL.viewDay(s), c = CL.current(s), list = CL.cues(s, gid, 14).upcoming, nx = list[0];
     const st = s.ready[gid]?.state || "";
-    html = `<div class="head" style="--g:${E(g.color)}"><h1 translate="no">${E(g.name)}</h1><div class="meta mono">${CL.hhmmss(CL.clock(s).sec)}<br>${c ? `<span translate="no">${E(c.title)}</span> · ${CL.fmt(CL.remaining(s))}` : "<span>Show nicht gestartet</span>"} · <span translate="no">${E(day.name)}</span></div></div>
+    html = `<div class="head" style="--g:${E(g.color)}"><h1 translate="no">${E(g.name)}</h1><div class="meta mono">${CL.hhmmss(CL.clock(s).sec)}<br>${c ? `<span translate="no">${c.type === "break" ? "⏸ " : ""}${E(c.title)}</span> · ${CL.fmt(CL.remaining(s))}` : "<span>Show nicht gestartet</span>"} · <span translate="no">${E(day.name)}</span></div></div>
     <div class="nextcue ${nx ? nx.state : ""}" style="--g:${E(g.color)}">${nx ? `<div class="ev"><span>Nächster Cue</span> · <span translate="no">${E(nx.e.title)}</span> · ${CL.hhmmss(nx.at)}</div>
       <div class="txt" translate="no">${E(nx.q.text) || "–"}</div><div class="cd">${inTxt(nx.inMs)}</div>` : `<div class="txt">Keine weiteren Cues</div>`}</div>
     <div>${list.slice(1).map((x) => `<div class="cue ${x.state}" style="--c:${E(g.color)}"><span class="when">${CL.hhmm(x.at)}</span><span class="chip" style="--c:${E(g.color)}">${E(g.short)}</span><span translate="no">${E(x.q.text)}<small>${E(x.e.title)}</small></span><span class="in">${inTxt(x.inMs)}</span></div>`).join("")}</div>

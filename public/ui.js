@@ -91,7 +91,7 @@ const UI = (() => {
     try { if (ctx.kind === "project") meta = await (await fetch(ctx.api + "/meta")).json(); } catch (_) {}
     if (meta.error) { location.href = "/app"; return; }
     document.title = `${meta.name} · ${I18N.t(document.title.split("·").pop().trim())} · Tallycall`;
-    const tabs = [["", "Regie", "regie"], ["timeline", "Timeline", "timeline"], ["editor", "Planung", "editor"], ["grafik", "Bauchbinden", "grafik"], ["gewerk", "Gewerke", "gewerk"]];
+    const tabs = [["", "Regie", "regie"], ["editor", "Planung", "editor"], ["timeline", "Timeline", "timeline"], ["grafik", "Bauchbinden", "grafik"], ["gewerk", "Gewerke", "gewerk"], ["integrations", "Trigger", "integrations"]];
     host.className = "appbar";
     host.innerHTML = `<a class="brand" href="/app" title="Alle Projekte"><img src="/logo.svg" alt="">Tallycall</a><span class="sep">/</span>
       <span class="proj"><b translate="no">${E(meta.name)}</b>${meta.role === "admin" ? "" : '<span class="badge">Editor</span>'}</span>
@@ -119,5 +119,27 @@ const UI = (() => {
     $("#fbMenu", f).onclick = (e) => screensMenu(e.currentTarget);
   }
 
-  return { toast, copy, modal, share, bar, floating, pop, screensMenu, href };
+  // Farbwahl aus der Palette plus freie Farbe. onPick(hex) bei Auswahl.
+  function palette(cur, onPick, { el } = {}) {
+    const host = el || document.createElement("div"); host.className = "pal";
+    host.innerHTML = CLS.PALETTE.map(([c, n]) => `<button type="button" title="${E(n)}" style="--c:${c}" data-c="${c}" aria-pressed="${String(c).toLowerCase() === String(cur || "").toLowerCase()}"></button>`).join("") + `<input type="color" value="${E(cur || "#7c9cff")}" title="${E(I18N.t("Eigene Farbe"))}">`;
+    host.onclick = (e) => { const b = e.target.closest("[data-c]"); if (b) onPick(b.dataset.c); };
+    host.querySelector("input").onchange = (e) => onPick(e.target.value);
+    return host;
+  }
+  // Hinweis bei Lizenzgrenzen (Antwort 402 vom Server)
+  document.addEventListener("cl-upgrade", async (e) => {
+    let link = ""; try { link = (await (await fetch("/api/config")).json()).payLink || ""; } catch (_) {}
+    modal({ title: "Pro-Plan nötig", html: `<p>${E(e.detail || "")}</p><p class="hint">${link ? "" : "Dieser Server hat noch keine Bezahlung eingerichtet. Bitte den Betreiber kontaktieren."}</p>`, actions: [{ label: "Schließen" }, ...(link ? [{ label: "Auf Pro wechseln", cls: "primary", onClick: () => window.open(link, "_blank") }] : [])] });
+  });
+  // Einfache Reiter innerhalb einer Karte: host enthält .ptabs-Knöpfe mit data-tab und Bereiche mit data-pane
+  function tabs(host, key) {
+    const btns = [...host.querySelectorAll(".ptabs [data-tab]")], panes = [...host.querySelectorAll("[data-pane]")];
+    const show = (id) => { btns.forEach((b) => b.setAttribute("aria-pressed", b.dataset.tab === id)); panes.forEach((p) => (p.hidden = p.dataset.pane !== id)); try { localStorage.setItem("tab:" + key, id); } catch (_) {} };
+    btns.forEach((b) => (b.onclick = () => show(b.dataset.tab)));
+    let init = null; try { init = localStorage.getItem("tab:" + key); } catch (_) {}
+    show(btns.some((b) => b.dataset.tab === init) ? init : btns[0]?.dataset.tab);
+    return show;
+  }
+  return { toast, copy, modal, share, bar, floating, pop, screensMenu, href, palette, tabs };
 })();

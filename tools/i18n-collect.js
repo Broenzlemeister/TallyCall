@@ -33,6 +33,7 @@ const PORT = 4097, U = `http://localhost:${PORT}`, DATA = "/tmp/sw-collect-" + D
     await act({ type: "start" }); await act({ type: "addTime", ms: 60000 }); await act({ type: "addTime", ms: -60000 }); await act({ type: "message", text: "Hallo", visible: true }); await act({ type: "ready", gewerk: "licht", state: "ready" }); await act({ type: "ready", gewerk: "ton", state: "wait" });
     await act({ type: "lower", data: { title: "Anna", subtitle: "Gast", visible: true } }); await act({ type: "draftStart" }); await r.waitForTimeout(900); await grab(r);
     await act({ type: "pause" }); await r.waitForTimeout(500); await grab(r); await act({ type: "next" }); await act({ type: "prev" }); await act({ type: "stop" }); await act({ type: "roll", on: true }); await r.waitForTimeout(700); await grab(r); await act({ type: "roll", on: false });
+    for (const t of ["g", "l", "m", "p"]) { await r.click(`[data-tab="${t}"]`); await r.waitForTimeout(200); await grab(r); }
     await r.hover("#uiScreens"); await r.click("#uiScreens"); await r.waitForTimeout(400); await grab(r); await r.mouse.click(5, 5); await r.click("#uiUser"); await r.waitForTimeout(300); await grab(r); await r.close();
   });
   // Editor mit Entwurf, Änderungsliste, Rückfragen, Cues
@@ -40,13 +41,28 @@ const PORT = 4097, U = `http://localhost:${PORT}`, DATA = "/tmp/sw-collect-" + D
     await act({ type: "draftDiscard" });
     const e = await open(`/p/${pid}/editor`, 900); await grab(e);
     await e.click("#bDraft"); await e.waitForTimeout(700);
-    await e.locator('tr[data-id] [data-f="title"]').nth(1).fill("Geändert"); await e.keyboard.press("Tab"); await e.waitForTimeout(700); await e.click('button[data-a="dup"] >> nth=0'); await e.waitForTimeout(500);
-    await e.click('button[data-a="open"] >> nth=0'); await e.waitForTimeout(400); await e.click('button[data-a="cueadd"]'); await e.waitForTimeout(500); await grab(e);
+    await e.locator(".rd .r").nth(1).click(); await e.waitForTimeout(400); await grab(e);
+    await e.locator('#insp [data-f="title"]').fill("Geändert"); await e.keyboard.press("Tab"); await e.waitForTimeout(700); await e.click('#insp [data-a="cueadd"]'); await e.waitForTimeout(500); await e.click('#insp [data-a="cueact"]').catch(() => {}); await e.waitForTimeout(300); await grab(e);
+    await e.click("#bBreak"); await e.waitForTimeout(500); await grab(e); await e.click("#bGroup"); await e.waitForTimeout(500); await grab(e);
+    await e.locator('.rd .r.g [data-a="del"]').first().click().catch(() => {}); await e.waitForTimeout(300); await grab(e); await e.keyboard.press("Escape"); await e.mouse.click(5, 5);
+    await e.click("#dayEdit"); await e.click('[data-tab="st"]'); await e.waitForTimeout(300); await grab(e); await e.click('[data-tab="io"]'); await e.waitForTimeout(300); await grab(e);
     await e.click("#bDiff"); await e.waitForTimeout(300); await grab(e); await e.click("#bPublish"); await e.waitForTimeout(300); await grab(e); await e.click("#bAskNo"); await e.click("#bDiscard"); await e.waitForTimeout(300); await grab(e); await e.click("#bAskNo");
     await act({ type: "gewerkAdd" }); await act({ type: "dayAdd" }); await act({ type: "dayDelete", id: "tag1" }).catch(() => {}); await e.waitForTimeout(700); await grab(e);
     await e.click("#bPublish"); await e.click("#bPubYes"); await e.waitForTimeout(900); await grab(e); await e.close();
   });
   await step("timeline", async () => { for (const q of ["", "?mode=days"]) { const t = await open(`/p/${pid}/timeline${q}`, 1100); await grab(t); if (!q) { await t.click(".tl-bar"); await t.waitForTimeout(300); await grab(t); await t.click("#bEdit"); await t.waitForTimeout(900); await grab(t); } await t.close(); } });
+  await step("integrations", async () => {
+    const i = await open(`/p/${pid}/integrations`, 1000); await grab(i);
+    await i.click("#tAdd"); await i.waitForTimeout(500); await i.locator('.trow [data-f="type"]').selectOption("osc"); await i.waitForTimeout(400); await i.click("#rAdd"); await i.waitForTimeout(500); await i.click("#tkAdd"); await i.waitForTimeout(500); await grab(i);
+    await i.locator('.trow [data-a="test"]').click().catch(() => {}); await i.waitForTimeout(800); await grab(i);
+    await i.click("#tAdd"); await i.waitForTimeout(400); await grab(i); await i.close();
+    const ed = await open(`/p/${pid}/editor`, 900); await ed.locator(".rd .r").nth(1).click(); await ed.waitForTimeout(400); await ed.click('#insp [data-a="actadd"]').catch(() => {}); await ed.waitForTimeout(400); await ed.click('#insp [data-a="cueact"]').catch(() => {}); await ed.waitForTimeout(400); await grab(ed); await ed.close();
+  });
+  await step("admin", async () => {
+    const a = await open("/admin", 1000); await grab(a);
+    for (const t of ["k", "p", "c"]) { await a.click(`[data-tab="${t}"]`); await a.waitForTimeout(200); await grab(a); }
+    await a.click('[data-tab="u"]'); await a.click('[data-a="plan"]'); await a.waitForTimeout(300); await grab(a); await a.close();
+  });
   await step("grafik", async () => { const g = await open(`/p/${pid}/grafik`, 1000); await grab(g); await g.click("#bSave"); await g.waitForTimeout(300); await grab(g); await g.fill("#fTitle", "Test"); await g.click("#bSave"); await g.waitForTimeout(400); await g.click("#bPng").catch(() => {}); await g.waitForTimeout(1500); await grab(g); await g.click("#bShare"); await g.waitForTimeout(500); await grab(g); await g.close(); });
   await step("settings", async () => {
     const s = await open(`/p/${pid}/settings`, 1000); await grab(s);

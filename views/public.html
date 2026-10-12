@@ -15,9 +15,9 @@ CL.run((s) => {
   if (tabs !== lastTabs) { $("tabs").innerHTML = s.days.length > 1 ? tabs : ""; lastTabs = tabs; }
   const ci = day.events.findIndex((e) => e.id === s.runtime.currentId);
   const html = CL.projection(s, day).map((x, i) => {
-    if (x.group) return `<div class="gtitle" translate="no">${CL.esc(x.e.title)}</div>`;
+    if (x.group) return x.empty || x.skip ? "" : `<div class="gtitle d${x.depth}" translate="no">${CL.esc(x.e.title)}</div>`;
     if (x.skip) return "";
-    return `<div class="row ${x.e.id === s.runtime.currentId ? "now" : ""} ${ci >= 0 && i < ci ? "past" : ""}"><div class="c" style="background:${CL.esc(x.e.color)}"></div>
+    return `<div class="row d${x.depth} ${x.brk ? "brk" : ""} ${x.e.id === s.runtime.currentId ? "now" : ""} ${ci >= 0 && i < ci ? "past" : ""}"><div class="c" style="background:${CL.esc(x.e.color)}"></div>
     <div class="t">${CL.hhmm(x.pStart)}</div><div translate="no">${CL.esc(x.e.title)}<small>${CL.esc([x.e.presenter, x.e.subtitle].filter(Boolean).join(" · "))}</small></div><div></div></div>`; }).join("");
   if (html !== last) { $("rows").innerHTML = html; last = html; }
 });

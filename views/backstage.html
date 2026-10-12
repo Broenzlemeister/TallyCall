@@ -24,9 +24,9 @@ CL.run((s) => {
   $("msg").textContent = s.message.text;
   const ci = day.events.findIndex((e) => e.id === s.runtime.currentId);
   const html = CL.projection(s, day).map((x, i) => {
-    if (x.group) return `<div class="gtitle" translate="no">${CL.esc(x.e.title)}</div>`;
+    if (x.group) return x.empty ? "" : `<div class="gtitle d${x.depth}" translate="no">${CL.esc(x.e.title)} <span class="mono" style="opacity:.6">${CL.hhmm(x.pStart)}–${CL.hhmm(x.pEnd)}</span></div>`;
     const late = Math.abs(x.late) >= 60 ? ` <span class="${x.late > 0 ? "late-pos" : "late-neg"}">${CL.signed(x.late)}</span>` : "";
-    return `<div class="row ${x.e.id === s.runtime.currentId ? "now" : ""} ${ci >= 0 && i < ci ? "past" : ""} ${x.skip ? "skip" : ""}">
+    return `<div class="row d${x.depth} ${x.brk ? "brk" : ""} ${x.e.id === s.runtime.currentId ? "now" : ""} ${ci >= 0 && i < ci ? "past" : ""} ${x.skip ? "skip" : ""}">
     <div class="c" style="background:${CL.esc(x.e.color)}"></div><div class="t">${CL.hhmm(x.pStart)}${x.e.start === "fixed" ? " 📌" : ""}${late}</div>
     <div translate="no">${CL.esc(x.e.title)} ${CL.gChips(x.e.cues, s)}<small>${CL.esc([x.e.presenter, x.e.subtitle, x.e.note].filter(Boolean).join(" · "))}</small></div>
     <div class="t">${CL.fmt(x.e.duration * 1000)}</div></div>`; }).join("");

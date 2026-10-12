@@ -1,17 +1,20 @@
-// Timeline mit Balken: Ablauf-Spur, Prognose bei Verzug, Gewerke-Spuren mit Cue-Markern, Tage-Modus.
+// Timeline mit Balken: Gruppen-Ebenen, Ablauf-Spur, Prognose bei Verzug, Gewerke-Spuren mit Cue-Markern, Tage-Modus, Streifen-Modus (Regie).
 // Setzt common.js (CL) voraus. Bearbeiten (editable) meldet Änderungen über onAction, schreibt aber nie selbst.
 const Timeline = (() => {
   const E = (s) => CL.esc(s);
-  const H = { ruler: 30, group: 22, event: 60, prog: 22, gewerk: 38, day: 54, cEvent: 46, cRuler: 24 };
+  const H = { ruler: 30, group: 20, event: 60, prog: 22, gewerk: 38, day: 54, cEvent: 44, cRuler: 22, cGroup: 16, cCues: 18 };
   const q5 = (v) => Math.round(v / 5) * 5; // Prognose auf 5 s runden, damit nicht jede Sekunde neu gebaut wird
 
   function create(el, opts = {}) {
-    const o = { compact: false, mode: "gewerke", editable: false, onAction: null, onSelect: null, ...opts };
-    let zoom = 1, follow = !o.compact, sig = "", M = null, dragging = false, selected = null, userScroll = 0, lastFast = 0, R = {}, availW = 0;
-    el.innerHTML = `<div class="tl${o.compact ? " compact" : ""}"><div class="tl-labels"></div><div class="tl-scroll"><div class="tl-canvas"></div></div></div>`;
+    const o = { compact: false, mode: "gewerke", editable: false, span: 60, nowPos: 0.22, onAction: null, onSelect: null, ...opts };
+    const strip = o.mode === "strip"; if (strip) o.compact = true;
+    let zoom = 1, follow = !o.compact, sig = "", M = null, dragging = false, selected = null, userScroll = 0, lastFast = 0, R = {}, availW = 0, panOff = 0, panAt = 0;
+    el.innerHTML = `<div class="tl${o.compact ? " compact" : ""}${strip ? " strip-host" : ""}"><div class="tl-labels"></div><div class="tl-scroll"><div class="tl-canvas"></div></div></div>`;
     const labels = el.querySelector(".tl-labels"), scroll = el.querySelector(".tl-scroll"), canvas = el.querySelector(".tl-canvas");
+    if (strip) { scroll.style.overflow = "hidden"; canvas.style.willChange = "transform"; }
     scroll.addEventListener("scroll", () => { if (!R.autoScrolling) userScroll = Date.now(); });
     scroll.addEventListener("wheel", (e) => {
+      if (strip) { if (!e.ctrlKey) return; e.preventDefault(); o.span = Math.max(10, Math.min(360, Math.round(o.span * (e.deltaY < 0 ? 1 / 1.2 : 1.2)))); sig = ""; api.render(CL.state); return; }
       if (!e.ctrlKey || o.compact) return;
       e.preventDefault();
       const rect = scroll.getBoundingClientRect(), mx = e.clientX - rect.left, tAt = (scroll.scrollLeft + mx) / (M?.ppm || 1);
@@ -29,26 +32,33 @@ const Timeline = (() => {
         for (const r of rows) {
           if (r.group || r.skip) continue;
           tmin = Math.min(tmin, r.start, r.pStart); tmax = Math.max(tmax, r.end, r.pEnd);
-          if (o.mode !== "days" && !o.compact) for (const c of r.e.cues) tmax = Math.max(tmax, r.pStart + c.offset + 120);
+          if (o.mode === "gewerke" && !o.compact) for (const c of r.e.cues) tmax = Math.max(tmax, r.pStart + c.offset + 120);
         }
         return { day, rows };
       });
       if (!isFinite(tmin)) { tmin = dayV.startTime; tmax = tmin + 3600; }
       tmin = Math.floor((tmin - 300) / 900) * 900; tmax = Math.ceil((tmax + 300) / 900) * 900;
+      if (strip) { tmin -= 1800; tmax += 3600; } // Rand, damit das Fenster um „Jetzt“ nicht leer läuft
       if (tmax - tmin < 3600) tmax = tmin + 3600;
       const spanMin = (tmax - tmin) / 60, labW = o.compact ? 0 : 150;
       availW = Math.max(300, (el.clientWidth || 900) - labW - 2);
-      const fit = availW / spanMin, ppm = fit * (o.compact ? 1 : zoom), width = Math.max(availW, spanMin * ppm);
-      return { s, clock, dayV, dd, gewerke, tmin, tmax, ppm: width / spanMin, width, labW };
+      let ppm;
+      if (strip) ppm = availW / o.span; else { const fit = availW / spanMin; ppm = fit * (o.compact ? 1 : zoom); }
+      const width = strip ? spanMin * ppm : Math.max(availW, spanMin * ppm);
+      return { s, clock, dayV, dd, gewerke, tmin, tmax, ppm: width / spanMin, width, labW, maxDepth: Math.max(0, ...dd.flatMap((x) => x.rows.filter((r) => r.group).map((r) => r.depth + 1))) };
     }
     const X = (sec) => ((sec - M.tmin) / 60) * M.ppm;
-    const evMap = () => { const m = new Map(); for (const { day, rows } of M.dd) for (const r of rows) m.set(r.e.id, { e: r.e, day }); return m; };
+    const evMap = () => { const m = new Map(); for (const { day, rows } of M.dd) for (const r of rows) m.set(r.e.id, { e: r.e, day, row: r }); return m; };
 
     // ---- Aufbau (nur wenn sich Plan, Zoom oder Größe ändern) ----
     function signature(m) {
-      return JSON.stringify([o.mode, o.compact, o.editable, zoom, Math.round(availW / 20), m.tmin, m.tmax, selected,
-        m.dd.map(({ day, rows }) => [day.id, day.name, rows.map((r) => [r.e.id, r.e.title, r.e.type, r.e.color, r.e.skip, r.e.start, r.e.duration, r.start, r.end, r.pStart, r.pEnd, r.over, r.e.cues.map((c) => [c.id, c.gewerk, c.offset, c.text])])]),
+      return JSON.stringify([o.mode, o.compact, o.editable, zoom, o.span, Math.round(availW / 20), m.tmin, m.tmax, selected,
+        m.dd.map(({ day, rows }) => [day.id, day.name, rows.map((r) => [r.e.id, r.e.title, r.e.type, r.e.parent, r.e.color, r.skip, r.e.start, r.e.duration, r.start, r.end, r.pStart, r.pEnd, r.over, r.e.cues.map((c) => [c.id, c.gewerk, c.offset, c.text])])]),
         m.gewerke.map((g) => [g.id, g.name, g.short, g.color]), !!CL.current(m.s)]);
+    }
+    function groupLane(rows, depth, h) {
+      return rows.filter((r) => r.group && r.depth === depth && !r.empty).map((g) => { const x1 = X(g.pStart), x2 = X(g.pEnd);
+        return `<div class="tl-grp d${depth}" translate="no" style="left:${x1}px;width:${Math.max(4, x2 - x1 - 2)}px;--c:${E(g.e.color)}" title="${E(g.e.title)} · ${CL.hhmm(g.pStart)}–${CL.hhmm(g.pEnd)}" data-id="${E(g.e.id)}">${E(g.e.title)}</div>`; }).join("");
     }
     function build(m) {
       M = m;
@@ -60,22 +70,20 @@ const Timeline = (() => {
         for (const { day, rows } of m.dd) lane("day:" + day.id, H.day, `<div translate="no"><b>${E(day.name)}</b><div class="hint mono">${E(day.date.split("-").reverse().join("."))} · ${CL.hhmm(day.startTime)}</div></div>`, rows.filter((r) => !r.group).map((r) => bar(r, H.day)).join(""), { dayDate: day.date });
       } else {
         const rows = m.dd[0].rows;
-        if (!o.compact && rows.some((r) => r.group)) {
-          const evs = rows.filter((r) => !r.group && !r.skip), end = evs.length ? Math.max(...evs.map((r) => r.end)) : m.tmax;
-          const gs = rows.filter((r) => r.group);
-          lane("groups", H.group, '<span class="hint">Gruppen</span>', gs.map((g, i) => { const nxt = gs[i + 1]; const x1 = X(g.start), x2 = X(nxt ? nxt.start : end);
-            return `<div class="tl-grp" translate="no" style="left:${x1}px;width:${Math.max(4, x2 - x1 - 2)}px" title="${E(g.e.title)}">${E(g.e.title)}</div>`; }).join(""));
-        }
+        for (let d = 0; d < m.maxDepth; d++) lane("groups" + d, o.compact ? H.cGroup : H.group, d === 0 ? '<span class="hint">Gruppen</span>' : "", groupLane(rows, d, o.compact ? H.cGroup : H.group));
         lane("events", o.compact ? H.cEvent : H.event, '<span class="fg2">Ablauf</span>', rows.filter((r) => !r.group).map((r) => bar(r, o.compact ? H.cEvent : H.event)).join(""));
         if (live && !o.compact) {
           const ci = rows.findIndex((r) => r.e.id === m.s.runtime.currentId);
           lane("prog", H.prog, '<span class="hint">Prognose</span>', rows.filter((r, i) => !r.group && !r.skip && i >= ci && ci >= 0).map((r) => { const x1 = X(r.pStart), x2 = X(r.pEnd), late = r.late;
             return `<div class="tl-pbar ${late > 30 ? "late" : late < -30 ? "early" : ""}" translate="no" style="left:${x1}px;width:${Math.max(3, x2 - x1)}px" title="${E(r.e.title)}: ${CL.hhmm(r.pStart)}–${CL.hhmm(r.pEnd)} (${CL.signed(late)})">${Math.abs(late) >= 30 ? CL.signed(late) : ""}</div>`; }).join(""));
         }
-        if (!o.compact) {
+        const cueOf = (g) => rows.filter((r) => !r.group && !r.skip).flatMap((r) => r.e.cues.filter((c) => !g || c.gewerk === g.id).map((c) => ({ c, r, at: r.pStart + c.offset, g: g || m.gewerke.find((x) => x.id === c.gewerk) }))).sort((a, b) => a.at - b.at);
+        if (o.compact) { // eine Spur mit allen Cues als Marken
+          lane("cues", H.cCues, "", cueOf(null).map((k) => `<div translate="no" class="tl-cue" data-eid="${E(k.r.e.id)}" data-cid="${E(k.c.id)}" data-at="${k.at}" style="left:${X(k.at)}px;--c:${E(k.g?.color || "#94a3b8")}" title="${E(k.g?.name || "")} · ${CL.hhmmss(k.at)}\n${E(k.c.text)}"></div>`).join(""), { gewerk: true });
+        } else {
           const gTop = y;
           for (const g of m.gewerke) {
-            const cues = rows.filter((r) => !r.group && !r.skip).flatMap((r) => r.e.cues.filter((c) => c.gewerk === g.id).map((c) => ({ c, r, at: r.pStart + c.offset }))).sort((a, b) => a.at - b.at);
+            const cues = cueOf(g);
             const mk = cues.map((k, i) => { const x = X(k.at), nx = cues[i + 1] ? X(cues[i + 1].at) : Infinity, room = Math.min(nx - x - 18, 220);
               return `<div translate="no" class="tl-cue${selected === k.c.id ? " sel" : ""}" data-eid="${E(k.r.e.id)}" data-cid="${E(k.c.id)}" data-at="${k.at}" style="left:${x}px;--c:${E(g.color)}" title="${E(g.name)} · ${CL.hhmmss(k.at)}\n${E(k.c.text)}"></div>${room > 44 ? `<span class="tl-cuelab" translate="no" style="left:${x + 11}px;max-width:${room}px">${E(k.c.text)}</span>` : ""}`; }).join("");
             lane("g:" + g.id, H.gewerk, `<span translate="no" style="display:contents"><span class="chip" style="--c:${E(g.color)}">${E(g.short)}</span><span class="fg2">${E(g.name)}</span></span>`, mk, { gewerk: true });
@@ -86,27 +94,27 @@ const Timeline = (() => {
       // Raster, Stundenmarken, Ereignislinien
       const total = y, ticks = [];
       const stepMin = M.ppm >= 8 ? 5 : M.ppm >= 3 ? 15 : M.ppm >= 1.2 ? 30 : 60;
-      for (let t = M.tmin; t <= M.tmax; t += stepMin * 60) { const major = t % 3600 === 0; ticks.push(`<div class="tl-tick${major ? " maj" : ""}" style="left:${X(t)}px;height:${lanes[0].h}px"><span>${major || M.ppm >= 3 ? CL.hhmm(t) : ""}</span></div><div class="tl-vline${major ? " maj" : ""}" style="left:${X(t)}px;top:${lanes[0].h}px;height:${total - lanes[0].h}px"></div>`); }
+      for (let t = Math.ceil(M.tmin / (stepMin * 60)) * stepMin * 60; t <= M.tmax; t += stepMin * 60) { const major = t % 3600 === 0; ticks.push(`<div class="tl-tick${major ? " maj" : ""}" style="left:${X(t)}px;height:${lanes[0].h}px"><span>${major || M.ppm >= 3 ? CL.hhmm(t) : ""}</span></div><div class="tl-vline${major ? " maj" : ""}" style="left:${X(t)}px;top:${lanes[0].h}px;height:${total - lanes[0].h}px"></div>`); }
       const evlines = o.mode === "gewerke" && !o.compact && R.evlinesTop != null ? M.dd[0].rows.filter((r) => !r.group && !r.skip).map((r) => `<div class="tl-evline" style="left:${X(r.pStart)}px;top:${R.evlinesTop}px;height:${total - R.evlinesTop}px"></div>`).join("") : "";
       labels.style.width = M.labW + "px";
       labels.innerHTML = lanes.map((l) => `<div class="tl-lab${l.key === "ruler" ? " ruler" : ""}" style="height:${l.h}px">${l.label}</div>`).join("");
       canvas.style.width = M.width + "px"; canvas.style.height = total + "px";
       canvas.innerHTML = ticks.join("") + evlines + lanes.map((l) => `<div class="tl-row${l.gewerk ? " gl" : ""}" data-lane="${E(l.key)}" style="top:${l.y}px;height:${l.h}px">${l.html}</div>`).join("") + '<div class="tl-now" hidden></div>';
+      if (strip) scroll.style.height = total + "px";
       R.lanes = lanes; R.now = canvas.querySelector(".tl-now"); R.cues = [...canvas.querySelectorAll(".tl-cue")]; R.bars = [...canvas.querySelectorAll(".tl-bar")];
       R.laneEls = Object.fromEntries([...canvas.querySelectorAll(".tl-row")].map((e) => [e.dataset.lane, e]));
     }
     function bar(r, h) {
-      const e = r.e, x1 = X(r.start), x2 = X(r.end), w = Math.max(3, x2 - x1), cur = M.s.runtime.currentId === e.id;
+      const e = r.e, s1 = strip ? r.pStart : r.start, s2 = strip ? r.pEnd : r.end, x1 = X(s1), x2 = X(s2), w = Math.max(3, x2 - x1), cur = M.s.runtime.currentId === e.id;
       const over = r.over ? `<div class="tl-over" style="width:${Math.max(3, (r.over / 60) * M.ppm)}px" title="${E(I18N.t("Überschneidung: {d} Platz fehlt vor dem festen Start", { d: CL.fmtDur(r.over) }))}"></div>` : "";
-      return `<div translate="no" class="tl-bar${r.skip ? " skip" : ""}${cur ? " cur" : ""}${w < 46 ? " narrow" : ""}${selected === e.id ? " sel" : ""}" data-id="${E(e.id)}" style="left:${x1}px;width:${w}px;--c:${E(e.color)}"
-        title="${E(e.title)}\n${CL.hhmm(r.start)}–${CL.hhmm(r.end)} · ${CL.fmtDur(e.duration)}${e.presenter ? "\n" + E(e.presenter) : ""}${e.start === "fixed" ? "\n" + I18N.t("Feste Uhrzeit") : ""}">
-        <div class="tl-prog"></div>${over}<div class="tl-t" translate="no">${E(e.title)}${e.start === "fixed" ? " 📌" : ""}</div>${h > 40 ? `<div class="tl-s mono">${CL.fmtDur(e.duration)} · ${CL.hhmm(r.start)}</div>` : ""}${o.editable ? `<div class="tl-h" title="${E(I18N.t("Ziehen: Dauer ändern"))}"></div>` : ""}</div>`;
+      return `<div translate="no" class="tl-bar${r.skip ? " skip" : ""}${cur ? " cur" : ""}${w < 46 ? " narrow" : ""}${selected === e.id ? " sel" : ""}${r.brk ? " brk" : ""}" data-id="${E(e.id)}" style="left:${x1}px;width:${w}px;--c:${E(e.color)}"
+        title="${E(e.title)}\n${CL.hhmm(s1)}–${CL.hhmm(s2)} · ${CL.fmtDur(e.duration)}${e.presenter ? "\n" + E(e.presenter) : ""}${e.start === "fixed" ? "\n" + I18N.t("Feste Uhrzeit") : ""}${r.brk ? "\n" + I18N.t("Pause") : ""}">
+        <div class="tl-prog"></div>${over}${o.editable ? `<div class="tl-m" title="${E(I18N.t("Ziehen: auf feste Uhrzeit legen"))}"></div>` : ""}<div class="tl-t" translate="no">${E(e.title)}${e.start === "fixed" ? " 📌" : ""}</div>${h > 40 ? `<div class="tl-s mono">${CL.fmtDur(e.duration)} · ${CL.hhmm(s1)}</div>` : ""}${o.editable ? `<div class="tl-h" title="${E(I18N.t("Ziehen: Dauer ändern"))}"></div>` : ""}</div>`;
     }
 
     // ---- Laufende Teile (Jetzt-Linie, Fortschritt, Cue-Zustand, Folgen), mehrmals pro Sekunde ----
     function live(s) {
       const nowSec = CL.clockExact(s), today = CL.clock(s).date;
-      const showNow = (laneDate) => laneDate === today;
       if (o.mode === "days") {
         // Linie nur in der Spur des heutigen Tages
         const l = R.lanes.find((x) => x.dayDate === today);
@@ -128,6 +136,13 @@ const Timeline = (() => {
         const isNext = !done && !nextPerLane.has(lane) && M.dayV.date === today; if (isNext) nextPerLane.add(lane);
         c.classList.toggle("nxt", isNext);
       }
+      if (strip) { // Fenster um „Jetzt“ (oder Tagesbeginn), per Ziehen verschiebbar
+        const anchor = M.dayV.date === today ? nowSec : (M.dd[0].rows.find((r) => !r.group && !r.skip)?.pStart ?? M.tmin) + o.span * 60 * o.nowPos;
+        if (panAt && Date.now() - panAt > 8000) { panOff = 0; panAt = 0; }
+        const left = X(anchor) - availW * o.nowPos + panOff;
+        canvas.style.transform = `translateX(${-Math.max(0, Math.min(M.width - availW, left))}px)`;
+        return;
+      }
       if (follow && !R.now.hidden && !dragging && Date.now() - userScroll > 6000) {
         const x = X(nowSec), want = x - scroll.clientWidth * 0.3;
         if (Math.abs(scroll.scrollLeft - want) > scroll.clientWidth * 0.2) { R.autoScrolling = true; scroll.scrollTo({ left: Math.max(0, want), behavior: "smooth" }); setTimeout(() => (R.autoScrolling = false), 700); }
@@ -137,34 +152,44 @@ const Timeline = (() => {
     // ---- Interaktion ----
     const snap = (v, step) => Math.round(v / step) * step;
     canvas.addEventListener("click", (e) => {
-      if (dragging) return;
-      const cue = e.target.closest(".tl-cue"), bar = e.target.closest(".tl-bar");
-      const id = cue ? cue.dataset.cid : bar ? bar.dataset.id : null;
+      if (dragging || R.panned) return;
+      const cue = e.target.closest(".tl-cue"), bar = e.target.closest(".tl-bar"), grp = e.target.closest(".tl-grp");
+      const id = cue ? cue.dataset.cid : bar ? bar.dataset.id : grp ? grp.dataset.id : null;
       selected = id; sig = ""; api.render(CL.state);
-      o.onSelect?.(cue ? { type: "cue", eventId: cue.dataset.eid, cueId: cue.dataset.cid } : bar ? { type: "event", eventId: bar.dataset.id } : null);
+      o.onSelect?.(cue ? { type: "cue", eventId: cue.dataset.eid, cueId: cue.dataset.cid } : bar || grp ? { type: "event", eventId: id } : null);
     });
     canvas.addEventListener("pointerdown", (e) => {
-      if (!o.editable || e.button !== 0) return;
-      const h = e.target.closest(".tl-h"), cue = e.target.closest(".tl-cue");
-      if (!h && !cue) return;
+      if (e.button !== 0) return;
+      if (strip) { // Fenster verschieben
+        const x0 = e.clientX, p0 = panOff; R.panned = false;
+        const move = (ev2) => { panOff = p0 - (ev2.clientX - x0); if (Math.abs(ev2.clientX - x0) > 4) R.panned = true; panAt = Date.now(); live(CL.state); };
+        const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); setTimeout(() => (R.panned = false), 0); };
+        window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+        return;
+      }
+      if (!o.editable) return;
+      const h = e.target.closest(".tl-h"), cue = e.target.closest(".tl-cue"), mv = e.target.closest(".tl-m");
+      if (!h && !cue && !mv) return;
       e.preventDefault();
-      const target = h ? h.closest(".tl-bar") : cue, x0 = e.clientX, em = evMap();
-      const eid = h ? target.dataset.id : target.dataset.eid, info = em.get(eid); if (!info) return;
-      const ev = info.e, startDur = ev.duration, startLeft = parseFloat(target.style.left), startW = parseFloat(target.style.width);
+      const target = h || mv ? e.target.closest(".tl-bar") : cue, x0 = e.clientX, em = evMap();
+      const eid = h || mv ? target.dataset.id : target.dataset.eid, info = em.get(eid); if (!info) return;
+      const ev = info.e, startDur = ev.duration, startLeft = parseFloat(target.style.left), startSec = info.row.start;
       const cueObj = cue ? ev.cues.find((c) => c.id === target.dataset.cid) : null, startOff = cueObj ? cueObj.offset : 0;
-      let val = h ? startDur : startOff;
-      dragging = true; target.setPointerCapture?.(e.pointerId); target.classList.add("drag");
+      let val = h ? startDur : mv ? startSec : startOff;
+      dragging = true; target.setPointerCapture?.(e.pointerId); target.classList.add(mv ? "moving" : "drag");
       const tip = document.createElement("div"); tip.className = "tl-tip"; canvas.appendChild(tip);
       const move = (ev2) => {
-        const dMin = (ev2.clientX - x0) / M.ppm, step = ev2.shiftKey ? 15 : h ? 60 : 15;
-        if (h) { val = Math.max(0, snap(startDur + dMin * 60, step)); target.style.width = Math.max(3, (val / 60) * M.ppm) + "px"; tip.textContent = "Dauer " + CL.fmtDur(val); tip.style.left = startLeft + (val / 60) * M.ppm + "px"; }
+        const dMin = (ev2.clientX - x0) / M.ppm, step = ev2.shiftKey ? 15 : h ? 60 : mv ? 60 : 15;
+        if (h) { val = Math.max(0, snap(startDur + dMin * 60, step)); target.style.width = Math.max(3, (val / 60) * M.ppm) + "px"; tip.textContent = I18N.t("Dauer") + " " + CL.fmtDur(val); tip.style.left = startLeft + (val / 60) * M.ppm + "px"; }
+        else if (mv) { val = Math.max(0, Math.min(86340, snap(startSec + dMin * 60, step))); const nx = startLeft + ((val - startSec) / 60) * M.ppm; target.style.left = nx + "px"; tip.textContent = "📌 " + CL.hhmm(val); tip.style.left = nx + "px"; }
         else { val = Math.max(0, snap(startOff + dMin * 60, step)); const nx = startLeft + ((val - startOff) / 60) * M.ppm; target.style.left = nx + "px"; tip.textContent = `+${CL.fmtDur(val)} · ${CL.hhmmss(Number(target.dataset.at) + val - startOff)}`; tip.style.left = nx + "px"; }
         tip.style.top = (target.closest(".tl-row")?.offsetTop || 0) - 22 + "px";
       };
       const up = () => {
         window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
-        tip.remove(); dragging = false; target.classList.remove("drag");
+        tip.remove(); dragging = false; target.classList.remove("drag", "moving");
         if (h && val !== startDur) o.onAction?.({ type: "update", id: eid, data: { duration: val } });
+        else if (mv && val !== startSec) o.onAction?.({ type: "update", id: eid, data: { start: "fixed", fixedStart: val } });
         else if (cue && val !== startOff) o.onAction?.({ type: "update", id: eid, data: { cues: ev.cues.map((c) => (c.id === cueObj.id ? { ...c, offset: val } : c)) } });
         else { sig = ""; }
       };
@@ -176,15 +201,17 @@ const Timeline = (() => {
         if (dragging || !s) return;
         const m = compute(s), sg = signature(m);
         if (sg !== sig) { sig = sg; const keep = scroll.scrollLeft; build(m); scroll.scrollLeft = keep; } else M = m;
-        const now = Date.now(); if (now - lastFast > 200) { lastFast = now; live(s); }
+        const now = Date.now(); if (now - lastFast > (strip ? 100 : 200)) { lastFast = now; live(s); }
       },
       get zoom() { return zoom; },
+      get span() { return o.span; },
+      setSpan(min) { o.span = Math.max(10, Math.min(360, min)); sig = ""; api.render(CL.state); },
       setZoom(z) { const keep = scroll.scrollLeft / (M?.ppm || 1); zoom = Math.max(0.5, Math.min(40, z)); sig = ""; api.render(CL.state); if (M) scroll.scrollLeft = keep * M.ppm; },
       fit() { zoom = 1; sig = ""; api.render(CL.state); scroll.scrollLeft = 0; },
       setMode(m) { o.mode = m; sig = ""; R = {}; api.render(CL.state); },
       setEditable(b) { o.editable = !!b; sig = ""; api.render(CL.state); },
       setFollow(b) { follow = !!b; userScroll = 0; if (b) lastFast = 0; },
-      scrollToNow() { userScroll = 0; const was = follow; follow = true; lastFast = 0; api.render(CL.state); follow = was; },
+      scrollToNow() { userScroll = 0; panOff = 0; panAt = 0; const was = follow; follow = true; lastFast = 0; api.render(CL.state); follow = was; },
       select(id) { selected = id; sig = ""; api.render(CL.state); },
     };
     return api;

@@ -1,7 +1,16 @@
 // Gemeinsame Zeit- und Ablauflogik, läuft im Browser und im Node-Server.
+// Ablaufpunkte liegen je Tag als flache Liste; Verschachtelung über e.parent (Id einer Gruppe weiter oben in der Liste).
 (function (root, factory) { if (typeof module === "object" && module.exports) module.exports = factory(); else root.CLS = factory(); })(this, function () {
   const p2 = (n) => String(n).padStart(2, "0");
   const cache = {};
+  const MAX_DEPTH = 3; // Gruppen in Gruppen in Gruppen, tiefer nicht
+
+  // Farbpalette: abgestimmt auf den dunklen Hintergrund. name = Anzeigename (deutsch, wird übersetzt)
+  const PALETTE = [
+    ["#7c9cff", "Blau"], ["#5ad7e6", "Cyan"], ["#4fd1a1", "Grün"], ["#a3e635", "Limette"], ["#f5b942", "Gelb"], ["#ff9d5c", "Orange"],
+    ["#ff7a7a", "Rot"], ["#f472b6", "Pink"], ["#b58cff", "Violett"], ["#c4b5fd", "Lavendel"], ["#94a3b8", "Grau"], ["#64748b", "Schiefer"],
+  ];
+  const COLOR = { group: "#64748b", break: "#8b95a7", event: "#7c9cff" };
 
   // Datum und Sekunden seit Mitternacht in der Zeitzone der Show (unabhängig von Server- und Geräte-Zeitzone)
   function nowParts(ms, tz) {
@@ -22,19 +31,69 @@
     return d.toISOString().slice(0, 10);
   }
 
+  // ---- Baumhelfer auf der flachen Liste ----
+  const byId = (events, id) => events.find((e) => e.id === id);
+  // Kette der Eltern (nah → fern), bricht bei Schleifen ab
+  function ancestors(events, e) {
+    const out = []; let p = e && e.parent;
+    while (p && out.length < 8) { const g = byId(events, p); if (!g || g.type !== "group" || out.includes(g)) break; out.push(g); p = g.parent; }
+    return out;
+  }
+  const depthOf = (events, e) => ancestors(events, e).length;
+  const isDesc = (events, e, id) => ancestors(events, e).some((g) => g.id === id);
+  // Zusammenhängender Block [i, j) eines Punkts samt allen Nachkommen
+  function blockOf(events, id) {
+    const i = events.findIndex((e) => e.id === id);
+    if (i < 0) return null;
+    let j = i + 1;
+    while (j < events.length && isDesc(events, events[j], id)) j++;
+    return [i, j];
+  }
+  const children = (events, gid) => events.filter((e) => (e.parent || "") === (gid || ""));
+  // Übersprungen, wenn der Punkt selbst oder eine Gruppe darüber übersprungen ist
+  const effSkip = (events, e) => !!e.skip || ancestors(events, e).some((g) => g.skip);
+  // Reihenfolge reparieren: Eltern müssen Gruppen sein, davor stehen, nicht zu tief; Nachkommen bleiben beisammen
+  function normalize(events) {
+    const seen = new Set();
+    for (const e of events) {
+      if (e.parent && (!seen.has(e.parent) || byId(events, e.parent)?.type !== "group" || e.type === "group" && depthOf(events, byId(events, e.parent)) >= MAX_DEPTH - 1)) e.parent = "";
+      if (e.type !== "group" && depthOf(events, e) > MAX_DEPTH) e.parent = "";
+      seen.add(e.id);
+    }
+    // Blöcke zusammenziehen: jedes Kind direkt hinter den Block seines Elternteils
+    const out = [];
+    const place = (parent) => { for (const e of events) if ((e.parent || "") === parent) { out.push(e); if (e.type === "group") place(e.id); } };
+    place("");
+    for (const e of events) if (!out.includes(e)) { e.parent = ""; out.push(e); }
+    return out;
+  }
+
   // Geplanter Ablauf eines Tages. Punkte mit fester Uhrzeit ("fixed") starten dann, egal was davor passiert.
-  // over = Sekunden, um die der Vorgänger in einen festen Start hineinragt (Planungsfehler).
+  // over = Sekunden, um die der Vorgänger in einen festen Start hineinragt (Planungsfehler). Gruppen bekommen Start und Ende ihrer Inhalte.
   function schedule(day) {
     let t = day.startTime || 0;
-    return day.events.map((e) => {
-      if (e.type === "group") return { e, start: t, end: t, group: true };
-      if (e.skip) return { e, start: t, end: t + e.duration, skip: true };
+    const ev = day.events;
+    const rows = ev.map((e) => {
+      const depth = depthOf(ev, e), skip = effSkip(ev, e);
+      if (e.type === "group") return { e, start: t, end: t, group: true, depth, skip, empty: true };
+      if (skip) return { e, start: t, end: t + e.duration, skip: true, depth, brk: e.type === "break" };
       let start = t, over = 0;
       if (e.start === "fixed") { over = Math.max(0, t - e.fixedStart); start = e.fixedStart; }
       const end = start + e.duration;
       t = end;
-      return { e, start, end, over };
+      return { e, start, end, over, depth, brk: e.type === "break" };
     });
+    closeGroups(rows, "start", "end");
+    return rows;
+  }
+  // Gruppenzeilen: Start = erster Inhalt, Ende = letztes Ende der Inhalte
+  function closeGroups(rows, ks, ke) {
+    for (let i = rows.length - 1; i >= 0; i--) {
+      const r = rows[i]; if (!r.group) continue;
+      let s = Infinity, en = -Infinity;
+      for (let j = i + 1; j < rows.length && rows[j].depth > r.depth; j++) { const x = rows[j]; if (x.group || x.skip) continue; s = Math.min(s, x[ks]); en = Math.max(en, x[ke]); }
+      if (isFinite(s)) { r[ks] = s; r[ke] = en; r.empty = false; } else { r[ke] = r[ks]; r.empty = true; }
+    }
   }
 
   // Voraussichtlicher Ablauf, wenn der aktuelle Punkt (curId) um curEnd endet und tatsächlich um curStart begonnen hat.
@@ -42,7 +101,7 @@
   function projection(day, curId, curEnd, curStart) {
     const rows = schedule(day), idx = rows.findIndex((r) => r.e.id === curId);
     let t = curEnd;
-    return rows.map((r, i) => {
+    const out = rows.map((r, i) => {
       const base = { ...r, pStart: r.start, pEnd: r.end, late: 0, endLate: 0 };
       if (r.group || r.skip || idx < 0 || i < idx) return base;
       if (i === idx) { t = curEnd; const st = curStart == null ? r.start : curStart; return { ...base, pStart: st, pEnd: curEnd, late: Math.round(st - r.start), endLate: Math.round(curEnd - r.end) }; }
@@ -50,6 +109,8 @@
       t = pStart + r.e.duration;
       return { ...base, pStart, pEnd: t, late: Math.round(pStart - r.start), endLate: Math.round(t - r.end) };
     });
+    closeGroups(out, "pStart", "pEnd");
+    return out;
   }
 
   function fmt(ms, { hours } = {}) {
@@ -65,5 +126,8 @@
   const fmtDur = (s) => fmt(s * 1000, { hours: s >= 3600 });
   const signed = (sec) => (sec === 0 ? "±0" : (sec > 0 ? "+" : "−") + fmt(Math.abs(sec) * 1000));
 
-  return { nowParts, addDays, schedule, projection, fmt, hhmm, hhmmss, parseHHMM, parseDur, fmtDur, signed };
+  // Platzhalter in Trigger-Texten: {title} {subtitle} {presenter} {id} {cue} {gewerk} {day} {show} {remaining} {clock}
+  const fill = (tpl, vars) => String(tpl ?? "").replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k] ?? "") : m));
+
+  return { MAX_DEPTH, PALETTE, COLOR, nowParts, addDays, ancestors, depthOf, isDesc, blockOf, children, effSkip, normalize, schedule, projection, fmt, hhmm, hhmmss, parseHHMM, parseDur, fmtDur, signed, fill };
 });

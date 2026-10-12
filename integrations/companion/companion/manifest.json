@@ -1,0 +1,16 @@
+{
+  "id": "tallycall",
+  "name": "tallycall",
+  "shortname": "tallycall",
+  "description": "Control Tallycall run-of-show (start, next, pause, time, lower thirds, messages, ready state) and show its live state on buttons.",
+  "version": "1.0.0",
+  "license": "MIT",
+  "repository": "https://github.com/Broenzlemeister/tallycall",
+  "bugs": "https://github.com/Broenzlemeister/tallycall/issues",
+  "maintainers": [{ "name": "Tallycall" }],
+  "legacyIds": [],
+  "runtime": { "type": "node18", "api": "nodejs-ipc", "apiVersion": "1.11.0", "entrypoint": "../main.js" },
+  "manufacturer": "Tallycall",
+  "products": ["Tallycall"],
+  "keywords": ["show control", "rundown", "timer", "cue", "tally"]
+}

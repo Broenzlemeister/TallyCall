@@ -16,7 +16,7 @@ CL.run((s) => {
   const c = CL.current(s), ms = CL.remaining(s), lv = CL.level(s);
   $("time").textContent = c ? CL.fmt(ms) : "--:--";
   $("time").className = "bigtime lv-" + (c ? (s.runtime.status === "paused" ? "ok" : lv) : "ok");
-  $("title").textContent = c ? c.title : "Bereit";
+  $("title").textContent = c ? (c.type === "break" ? "⏸ " : "") + c.title : "Bereit";
   $("sub").textContent = c ? [c.presenter, c.subtitle].filter(Boolean).join(" · ") : "";
   $("status").textContent = c ? { running: "läuft", paused: "pausiert", stopped: "geladen" }[s.runtime.status] : "";
   const total = c ? c.duration * 1000 + s.runtime.added : 0;
