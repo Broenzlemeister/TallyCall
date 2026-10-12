@@ -59,3 +59,10 @@ Auf `main` pushen (oder **Actions → CI und Deployment → Run workflow**). Der
 - Impressum und Datenschutz auf der Landingpage sind noch Platzhalter (`#`). Echte Angaben eintragen.
 - Marke "Tallycall" bei DPMA/EUIPO/USPTO prüfen und die Domain beim Registrar bestätigen.
 - Das Deployment wurde noch nicht auf einem echten Server getestet. Beim ersten Lauf Logs beobachten.
+
+## Eigenes SSL-Zertifikat (z. B. Wildcard)
+Statt Let's Encrypt kannst du ein vorhandenes Zertifikat nutzen:
+1. Auf dem VPS `/opt/tallycall/certs/fullchain.pem` (Zertifikat samt Zwischenzertifikaten) und `privkey.pem` (privater Schlüssel, `chmod 600`) ablegen. Der Ordner wird vom Deployment nie überschrieben und ist nicht im Git.
+2. In `/opt/tallycall/.env` eintragen: `CADDYFILE=Caddyfile.cert`
+3. `cd /opt/tallycall && docker compose up -d`
+Das Zertifikat muss `tallycall.com` und `www.tallycall.com` abdecken (`*.tallycall.com` allein deckt die Hauptdomain nicht ab). Bei Verlängerung die Dateien ersetzen und `docker compose restart caddy` ausführen.

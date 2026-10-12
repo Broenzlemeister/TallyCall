@@ -61,7 +61,7 @@ jobs:
           USER_NAME: ${{ secrets.VPS_USER }}
         run: |
           rsync -az --delete -e "ssh -i ~/.ssh/id_deploy -p ${PORT:-22}" \
-            --exclude '.git' --exclude '.github' --exclude 'data' --exclude 'backups' --exclude '.env' --exclude 'node_modules' \
+            --exclude '.git' --exclude '.github' --exclude 'data' --exclude 'backups' --exclude 'certs' --exclude '.env' --exclude 'node_modules' \
             ./ "${USER_NAME:-deploy}@${HOST}:/opt/tallycall/"
       - name: Starten und prüfen
         if: steps.cfg.outputs.ready == 'true'
