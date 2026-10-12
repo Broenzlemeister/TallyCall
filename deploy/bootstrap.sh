@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Einmalige Einrichtung eines frischen Ubuntu-VPS (22.04 oder 24.04 LTS) für Tallycall.
-# Als root ausführen:  bash bootstrap.sh --domain tallycall.com --key "ssh-ed25519 AAAA... tallycall-actions"
+# Als root ausführen:  bash bootstrap.sh --domain tallycall.com [--key "ssh-ed25519 AAAA..."]  (ohne --key wird ein Schlüssel erzeugt und angezeigt)
 # Was passiert: Docker, Firewall (22/80/443), automatische Sicherheitsupdates, fail2ban, Deploy-Benutzer mit nur dem
 # übergebenen SSH-Schlüssel, Ordner /opt/tallycall mit .env, tägliches Backup per Cron.
 set -euo pipefail
@@ -10,7 +10,11 @@ while [ $# -gt 0 ]; do case "$1" in
   *) echo "Unbekannte Option $1"; exit 1;; esac; done
 [ "$(id -u)" = 0 ] || { echo "Bitte als root ausführen."; exit 1; }
 [ -n "$DOMAIN" ] || { echo "Bitte --domain angeben (die Domain muss per A-Record auf diesen Server zeigen)."; exit 1; }
-[ -n "$KEY" ] || { echo "Bitte --key mit dem öffentlichen SSH-Schlüssel für GitHub Actions angeben."; exit 1; }
+GENKEY=0
+if [ -z "$KEY" ]; then
+  # Kein Schlüssel übergeben: auf dem Server erzeugen und am Ende ausgeben (für das GitHub-Secret VPS_SSH_KEY).
+  GENKEY=1; GK=$(mktemp -d); ssh-keygen -q -t ed25519 -N "" -C tallycall-actions -f "$GK/k"; KEY=$(cat "$GK/k.pub")
+fi
 case "$KEY" in ssh-ed25519\ *|ssh-rsa\ *|ecdsa-sha2-*) ;; *) echo "Der Schlüssel muss ein öffentlicher SSH-Schlüssel sein."; exit 1;; esac
 
 . /etc/os-release 2>/dev/null || true
@@ -55,6 +59,15 @@ cat > /etc/cron.d/tallycall-backup <<CRON
 CRON
 chmod 644 /etc/cron.d/tallycall-backup
 
+if [ "$GENKEY" = 1 ]; then
+  echo; echo "=================== GitHub-Secrets (einmalig eintragen) ==================="
+  echo "VPS_HOST = $(curl -fsS4 https://ifconfig.me 2>/dev/null || hostname -I | cut -d' ' -f1)"
+  echo "VPS_SSH_KEY = (alles zwischen den Linien, inklusive BEGIN/END-Zeilen)"
+  echo "-----"; cat "$GK/k"; echo "-----"
+  rm -rf "$GK"
+  echo "Dieser private Schlüssel wird nur jetzt angezeigt. Kopiere ihn sofort nach GitHub."
+  echo "==========================================================================="
+fi
 echo
 echo "Fertig. Nächste Schritte:"
 echo " 1) DNS: A-Record für $DOMAIN und www.$DOMAIN auf diese Server-IP (falls noch nicht geschehen)."
