@@ -7,39 +7,35 @@ Ziel: Jeder Push auf `main` testet den Code in GitHub Actions und lädt ihn dana
 - Die Domain **tallycall.com**: A-Record für `@` und `www` auf die IP des VPS (bei IPv6 zusätzlich AAAA). `www` leitet auf die Hauptdomain um. Stand 12.10.2026 ist die Domain per DNS noch nicht delegiert, also zuerst registrieren.
 - Root-Zugang per SSH für die einmalige Einrichtung.
 
-## 1. SSH-Schlüssel nur für das Deployment erzeugen (auf deinem Rechner)
+## 1. VPS einmalig einrichten
+Per SSH als root auf dem VPS (Repo öffentlich):
 ```sh
-ssh-keygen -t ed25519 -f tallycall-deploy -C "tallycall-actions" -N ""
+curl -fsSL https://raw.githubusercontent.com/Broenzlemeister/tallycall/main/deploy/bootstrap.sh | bash -s -- --domain tallycall.com
 ```
-Das erzeugt `tallycall-deploy` (privat, geheim) und `tallycall-deploy.pub` (öffentlich).
+Bei einem **privaten Repo** lädst du `deploy/bootstrap.sh` per `scp deploy/bootstrap.sh root@DEINE-IP:` hoch und startest `bash bootstrap.sh --domain tallycall.com`.
 
-## 2. VPS einmalig einrichten
-Per SSH als root auf dem VPS, mit dem Inhalt von `tallycall-deploy.pub`:
-```sh
-curl -fsSL https://raw.githubusercontent.com/Broenzlemeister/tallycall/main/deploy/bootstrap.sh -o bootstrap.sh   # bei privatem Repo: Datei stattdessen per scp hochladen
-bash bootstrap.sh --domain tallycall.com --key "ssh-ed25519 AAAA… tallycall-actions"
-```
-Bei einem **privaten Repo** funktioniert die `curl`-Zeile nicht ohne Anmeldung. Lade `deploy/bootstrap.sh` dann einfach per `scp deploy/bootstrap.sh root@DEINE-IP:` hoch.
+Das Skript installiert Docker, schaltet die Firewall auf 22/80/443, aktiviert Sicherheitsupdates und fail2ban, legt den Benutzer `deploy` an und richtet das tägliche Backup ein. Danach holt es den Code selbst aus GitHub nach `/opt/tallycall`, erzeugt die `.env` und startet Tallycall.
 
-Das Skript installiert Docker, schaltet die Firewall auf 22/80/443, aktiviert Sicherheitsupdates und fail2ban, legt den Benutzer `deploy` an (nur mit deinem Schlüssel), erzeugt `/opt/tallycall/.env` und richtet ein tägliches Backup ein.
+- Ist das Repo privat, zeigt das Skript einen **Nur-Lese-Schlüssel** an. Trage ihn in GitHub unter *Repo → Settings → Deploy keys → Add deploy key* ein (ohne Schreibrecht) und drücke Enter.
+- Am Ende zeigt es `VPS_HOST` und einen privaten Schlüssel für GitHub Actions an. Der Schlüssel kann auf dem Server **nur** den Befehl `tallycall-update` ausführen.
 
-## 3. Geheimnisse in GitHub eintragen
+## 2. Geheimnisse in GitHub eintragen
 Repo → **Settings → Secrets and variables → Actions → New repository secret**:
 
 | Name | Inhalt |
 |---|---|
 | `VPS_HOST` | IP oder Hostname des VPS |
-| `VPS_SSH_KEY` | kompletter Inhalt der **privaten** Datei `tallycall-deploy` |
+| `VPS_SSH_KEY` | der angezeigte private Schlüssel, komplett mit BEGIN/END-Zeilen |
 | `VPS_USER` | `deploy` (Standard, kann entfallen) |
 | `VPS_PORT` | nur falls SSH nicht auf Port 22 läuft |
-| `VPS_KNOWN_HOSTS` | empfohlen: Ausgabe von `ssh-keyscan -H DEINE-IP`, damit der Server-Fingerabdruck fest hinterlegt ist |
+| `VPS_KNOWN_HOSTS` | empfohlen: Ausgabe von `ssh-keyscan -H DEINE-IP` |
 
-Optional unter **Settings → Environments → production** Freigabe durch dich verlangen, dann deployt GitHub erst nach deinem Klick.
+Optional unter **Settings → Environments → production** Freigabe durch dich verlangen.
 
-## 4. Erstes Deployment
-Auf `main` pushen (oder **Actions → CI und Deployment → Run workflow**). Der Ablauf: Tests → Code per rsync nach `/opt/tallycall` → `docker compose up -d --build` → Health-Check. Danach läuft Tallycall unter `https://tallycall.com`. Das erste Zertifikat dauert einige Sekunden.
+## 3. Updates
+Jeder Push auf `main` testet den Code und ruft danach per SSH `tallycall-update` auf dem Server auf. Der Server sichert die Daten, holt `main` aus GitHub (`git fetch` und `reset`), baut neu und prüft den Health-Check. Von Hand geht dasselbe auf dem Server mit `tallycall-update`.
 
-## 5. Erstes Konto und Registrierung schließen
+## 4. Erstes Konto und Registrierung schließen
 Öffne `https://tallycall.com/signup` und lege dein Konto an. Setze danach auf dem VPS in `/opt/tallycall/.env` den Wert `ALLOW_SIGNUP=0` und starte neu (`cd /opt/tallycall && docker compose up -d`). Weitere Personen kommen dann nur noch per Einladung in ein Projekt. Ein Admin lädt sie unter **Projekteinstellungen → Mitglieder** ein. Wer noch kein Konto hat, braucht dafür vorübergehend `ALLOW_SIGNUP=1`.
 
 ## Betrieb

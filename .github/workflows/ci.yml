@@ -53,24 +53,14 @@ jobs:
           printf '%s\n' "$KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
           if [ -n "$KNOWN" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
           else ssh-keyscan -p "${PORT:-22}" -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null; echo "::warning::VPS_KNOWN_HOSTS ist nicht gesetzt. Der Server-Fingerabdruck wurde beim ersten Kontakt übernommen. Besser fest hinterlegen."; fi
-      - name: Code übertragen
+      - name: Server aktualisieren (git pull + Neubau auf dem Server)
         if: steps.cfg.outputs.ready == 'true'
         env:
           HOST: ${{ secrets.VPS_HOST }}
           PORT: ${{ secrets.VPS_PORT }}
           USER_NAME: ${{ secrets.VPS_USER }}
         run: |
-          rsync -az --delete -e "ssh -i ~/.ssh/id_deploy -p ${PORT:-22}" \
-            --exclude '.git' --exclude '.github' --exclude 'data' --exclude 'backups' --exclude 'certs' --exclude '.env' --exclude 'node_modules' \
-            ./ "${USER_NAME:-deploy}@${HOST}:/opt/tallycall/"
-      - name: Starten und prüfen
-        if: steps.cfg.outputs.ready == 'true'
-        env:
-          HOST: ${{ secrets.VPS_HOST }}
-          PORT: ${{ secrets.VPS_PORT }}
-          USER_NAME: ${{ secrets.VPS_USER }}
-        run: |
-          ssh -i ~/.ssh/id_deploy -p "${PORT:-22}" "${USER_NAME:-deploy}@${HOST}" 'cd /opt/tallycall && docker compose up -d --build --remove-orphans && sleep 6 && docker compose ps && docker compose exec -T app wget -qO- http://localhost:4001/api/health && docker image prune -f >/dev/null'
+          ssh -i ~/.ssh/id_deploy -p "${PORT:-22}" -o BatchMode=yes -o IdentitiesOnly=yes "${USER_NAME:-deploy}@${HOST}" tallycall-update
       - name: Öffentliche Erreichbarkeit prüfen
         if: steps.cfg.outputs.ready == 'true'
         run: |

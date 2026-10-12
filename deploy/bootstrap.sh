@@ -4,9 +4,9 @@
 # Was passiert: Docker, Firewall (22/80/443), automatische Sicherheitsupdates, fail2ban, Deploy-Benutzer mit nur dem
 # übergebenen SSH-Schlüssel, Ordner /opt/tallycall mit .env, tägliches Backup per Cron.
 set -euo pipefail
-DOMAIN=""; KEY=""; USER_NAME="deploy"; APP_DIR="/opt/tallycall"
+DOMAIN=""; KEY=""; USER_NAME="deploy"; APP_DIR="/opt/tallycall"; REPO="Broenzlemeister/tallycall"
 while [ $# -gt 0 ]; do case "$1" in
-  --domain) DOMAIN="$2"; shift 2;; --key) KEY="$2"; shift 2;; --user) USER_NAME="$2"; shift 2;; --dir) APP_DIR="$2"; shift 2;;
+  --domain) DOMAIN="$2"; shift 2;; --key) KEY="$2"; shift 2;; --user) USER_NAME="$2"; shift 2;; --dir) APP_DIR="$2"; shift 2;; --repo) REPO="$2"; shift 2;;
   *) echo "Unbekannte Option $1"; exit 1;; esac; done
 [ "$(id -u)" = 0 ] || { echo "Bitte als root ausführen."; exit 1; }
 [ -n "$DOMAIN" ] || { echo "Bitte --domain angeben (die Domain muss per A-Record auf diesen Server zeigen)."; exit 1; }
@@ -22,7 +22,7 @@ if [ "${ID:-}" != "ubuntu" ]; then echo "Hinweis: Das Skript ist für Ubuntu 22.
 export DEBIAN_FRONTEND=noninteractive
 echo "==> Pakete"
 apt-get update -y
-apt-get install -y ca-certificates curl ufw fail2ban unattended-upgrades rsync cron
+apt-get install -y ca-certificates curl ufw fail2ban unattended-upgrades cron
 if ! command -v docker >/dev/null; then echo "==> Docker"; curl -fsSL https://get.docker.com | sh; fi
 docker compose version >/dev/null 2>&1 || apt-get install -y docker-compose-plugin
 systemctl enable --now docker cron fail2ban
@@ -31,7 +31,7 @@ echo "==> Benutzer $USER_NAME"
 id "$USER_NAME" >/dev/null 2>&1 || adduser --disabled-password --gecos "" "$USER_NAME"
 usermod -aG docker "$USER_NAME"
 install -d -m 700 -o "$USER_NAME" -g "$USER_NAME" "/home/$USER_NAME/.ssh"
-grep -qF "$KEY" "/home/$USER_NAME/.ssh/authorized_keys" 2>/dev/null || echo "$KEY" >> "/home/$USER_NAME/.ssh/authorized_keys"
+grep -qF "$KEY" "/home/$USER_NAME/.ssh/authorized_keys" 2>/dev/null || echo "command=\"tallycall-update\",restrict $KEY" >> "/home/$USER_NAME/.ssh/authorized_keys"
 chown "$USER_NAME:$USER_NAME" "/home/$USER_NAME/.ssh/authorized_keys"; chmod 600 "/home/$USER_NAME/.ssh/authorized_keys"
 
 echo "==> Firewall"
@@ -39,8 +39,30 @@ ufw allow OpenSSH >/dev/null; ufw allow 80/tcp >/dev/null; ufw allow 443/tcp >/d
 ufw --force enable
 dpkg-reconfigure -f noninteractive unattended-upgrades || true
 
-echo "==> App-Ordner $APP_DIR"
-install -d -o "$USER_NAME" -g "$USER_NAME" "$APP_DIR" "$APP_DIR/backups"
+echo "==> Code von GitHub holen ($REPO)"
+install -d -o "$USER_NAME" -g "$USER_NAME" "$APP_DIR"
+if [ ! -d "$APP_DIR/.git" ]; then
+  if git ls-remote "https://github.com/$REPO.git" HEAD >/dev/null 2>&1; then
+    URL="https://github.com/$REPO.git"      # öffentliches Repo
+  else
+    # Privates Repo: Nur-Lese-Deploy-Key auf dem Server erzeugen, in GitHub eintragen lassen
+    DK="/home/$USER_NAME/.ssh/github_deploy"
+    [ -f "$DK" ] || sudo -u "$USER_NAME" ssh-keygen -q -t ed25519 -N "" -C "tallycall-server" -f "$DK"
+    printf 'Host github.com\n  IdentityFile %s\n  IdentitiesOnly yes\n  StrictHostKeyChecking accept-new\n' "$DK" > "/home/$USER_NAME/.ssh/config"
+    chown "$USER_NAME:$USER_NAME" "/home/$USER_NAME/.ssh/config"; chmod 600 "/home/$USER_NAME/.ssh/config"
+    echo; echo "=== Das Repo ist privat. Trage diesen Schlüssel in GitHub ein: ==="
+    echo "Repo https://github.com/$REPO -> Settings -> Deploy keys -> Add deploy key"
+    echo "Titel: Server, Schlüssel (Haken 'Allow write access' NICHT setzen):"; echo; cat "$DK.pub"; echo
+    until sudo -u "$USER_NAME" git ls-remote "git@github.com:$REPO.git" HEAD >/dev/null 2>&1; do
+      read -r -p "Eingetragen? Enter drücken zum Prüfen... " _ </dev/tty
+    done
+    URL="git@github.com:$REPO.git"
+  fi
+  sudo -u "$USER_NAME" git clone "$URL" "$APP_DIR"
+fi
+install -d -o "$USER_NAME" -g "$USER_NAME" "$APP_DIR/backups"
+ln -sf "$APP_DIR/deploy/update.sh" /usr/local/bin/tallycall-update
+chmod +x "$APP_DIR/deploy/update.sh" "$APP_DIR/deploy/backup.sh"
 if [ ! -f "$APP_DIR/.env" ]; then
   cat > "$APP_DIR/.env" <<ENV
 DOMAIN=$DOMAIN
@@ -52,6 +74,8 @@ SESSION_SECRET=$(head -c 48 /dev/urandom | base64 | tr -d '\n/+=')
 ENV
   chown "$USER_NAME:$USER_NAME" "$APP_DIR/.env"; chmod 600 "$APP_DIR/.env"
 fi
+echo "==> Erster Start"
+sudo -u "$USER_NAME" "$APP_DIR/deploy/update.sh" || echo "Erster Start fehlgeschlagen. Details: cd $APP_DIR && docker compose logs"
 
 echo "==> Tägliches Backup (03:15)"
 cat > /etc/cron.d/tallycall-backup <<CRON
@@ -69,7 +93,7 @@ if [ "$GENKEY" = 1 ]; then
   echo "==========================================================================="
 fi
 echo
-echo "Fertig. Nächste Schritte:"
+echo "Fertig. Tallycall wurde bereits gestartet. Nächste Schritte:"
 echo " 1) DNS: A-Record für $DOMAIN und www.$DOMAIN auf diese Server-IP (falls noch nicht geschehen)."
-echo " 2) In GitHub die Secrets setzen (siehe docs/DEPLOY.md) und auf main pushen: Der Workflow lädt den Code nach $APP_DIR und startet Tallycall."
+echo " 2) In GitHub die Secrets setzen (siehe docs/DEPLOY.md) und auf main pushen: Der Workflow ruft dann auf dem Server tallycall-update auf (git pull + Neubau)."
 echo " 3) Danach läuft die App unter https://$DOMAIN (das Zertifikat holt Caddy automatisch)."
