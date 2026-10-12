@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Einmalige Einrichtung eines frischen Ubuntu/Debian-VPS für Tallycall.
-# Als root ausführen:  bash bootstrap.sh --domain regie.example.com --key "ssh-ed25519 AAAA... tallycall-actions"
+# Einmalige Einrichtung eines frischen Ubuntu-VPS (22.04 oder 24.04 LTS) für Tallycall.
+# Als root ausführen:  bash bootstrap.sh --domain tallycall.com --key "ssh-ed25519 AAAA... tallycall-actions"
 # Was passiert: Docker, Firewall (22/80/443), automatische Sicherheitsupdates, fail2ban, Deploy-Benutzer mit nur dem
 # übergebenen SSH-Schlüssel, Ordner /opt/tallycall mit .env, tägliches Backup per Cron.
 set -euo pipefail
@@ -13,6 +13,8 @@ while [ $# -gt 0 ]; do case "$1" in
 [ -n "$KEY" ] || { echo "Bitte --key mit dem öffentlichen SSH-Schlüssel für GitHub Actions angeben."; exit 1; }
 case "$KEY" in ssh-ed25519\ *|ssh-rsa\ *|ecdsa-sha2-*) ;; *) echo "Der Schlüssel muss ein öffentlicher SSH-Schlüssel sein."; exit 1;; esac
 
+. /etc/os-release 2>/dev/null || true
+if [ "${ID:-}" != "ubuntu" ]; then echo "Hinweis: Das Skript ist für Ubuntu 22.04/24.04 gedacht (gefunden: ${PRETTY_NAME:-unbekannt}). Es sollte auch auf Debian laufen, ist dort aber nicht getestet."; fi
 export DEBIAN_FRONTEND=noninteractive
 echo "==> Pakete"
 apt-get update -y
@@ -55,6 +57,6 @@ chmod 644 /etc/cron.d/tallycall-backup
 
 echo
 echo "Fertig. Nächste Schritte:"
-echo " 1) DNS: A-Record für $DOMAIN auf diese Server-IP (falls noch nicht geschehen)."
+echo " 1) DNS: A-Record für $DOMAIN und www.$DOMAIN auf diese Server-IP (falls noch nicht geschehen)."
 echo " 2) In GitHub die Secrets setzen (siehe docs/DEPLOY.md) und auf main pushen: Der Workflow lädt den Code nach $APP_DIR und startet Tallycall."
 echo " 3) Danach läuft die App unter https://$DOMAIN (das Zertifikat holt Caddy automatisch)."

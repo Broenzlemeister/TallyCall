@@ -71,3 +71,12 @@ jobs:
           USER_NAME: ${{ secrets.VPS_USER }}
         run: |
           ssh -i ~/.ssh/id_deploy -p "${PORT:-22}" "${USER_NAME:-deploy}@${HOST}" 'cd /opt/tallycall && docker compose up -d --build --remove-orphans && sleep 6 && docker compose ps && docker compose exec -T app wget -qO- http://localhost:4001/api/health && docker image prune -f >/dev/null'
+      - name: Öffentliche Erreichbarkeit prüfen
+        if: steps.cfg.outputs.ready == 'true'
+        run: |
+          URL="${{ vars.PUBLIC_URL || 'https://tallycall.com' }}"
+          for i in $(seq 1 12); do
+            if curl -fsS -m 10 "$URL/api/health" | grep -q '"ok":true'; then echo "Erreichbar: $URL"; exit 0; fi
+            sleep 10
+          done
+          echo "::warning::$URL antwortet nicht. DNS (A-Record für @ und www), Firewall 80/443 und das Zertifikat prüfen (docker compose logs caddy)."

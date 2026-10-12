@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /$
+Allow: /login
+Allow: /signup
+Disallow: /app
+Disallow: /p/
+Disallow: /s/
+Disallow: /api/
+
+Sitemap: https://tallycall.com/sitemap.xml

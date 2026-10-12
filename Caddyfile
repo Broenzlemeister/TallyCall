@@ -1,6 +1,25 @@
 {$DOMAIN} {
-	# flush_interval -1: Live-Updates (Server-Sent Events) sofort durchreichen
+	# Nur Inhalte komprimieren, die sich lohnen. Der Live-Stream (/events) bleibt unkomprimiert und wird sofort durchgereicht.
+	encode zstd gzip {
+		match {
+			header Content-Type text/html*
+			header Content-Type text/css*
+			header Content-Type text/javascript*
+			header Content-Type application/json*
+			header Content-Type image/svg+xml*
+		}
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		-Server
+	}
 	reverse_proxy app:4001 {
 		flush_interval -1
 	}
+}
+
+www.{$DOMAIN} {
+	redir https://{$DOMAIN}{uri} permanent
 }

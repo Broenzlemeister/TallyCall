@@ -3,8 +3,8 @@
 Ziel: Jeder Push auf `main` testet den Code in GitHub Actions und lädt ihn danach automatisch auf deinen Server. HTTPS und Zertifikate übernimmt Caddy.
 
 ## Was du brauchst
-- Ein VPS mit **Ubuntu 22.04/24.04 oder Debian 12**, mindestens 1 vCPU und 1 GB RAM (2 GB sind komfortabel).
-- Eine **Domain** (oder Subdomain, z. B. `regie.deinedomain.de`), deren **A-Record** auf die IP des VPS zeigt. Bei IPv6 zusätzlich ein AAAA-Record.
+- Ein VPS mit **Ubuntu 24.04 LTS** (22.04 geht auch), mindestens 1 vCPU und 1 GB RAM (2 GB sind komfortabel).
+- Die Domain **tallycall.com**: A-Record für `@` und `www` auf die IP des VPS (bei IPv6 zusätzlich AAAA). `www` leitet auf die Hauptdomain um. Stand 12.10.2026 ist die Domain per DNS noch nicht delegiert, also zuerst registrieren.
 - Root-Zugang per SSH für die einmalige Einrichtung.
 
 ## 1. SSH-Schlüssel nur für das Deployment erzeugen (auf deinem Rechner)
@@ -17,7 +17,7 @@ Das erzeugt `tallycall-deploy` (privat, geheim) und `tallycall-deploy.pub` (öff
 Per SSH als root auf dem VPS, mit dem Inhalt von `tallycall-deploy.pub`:
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Broenzlemeister/tallycall/main/deploy/bootstrap.sh -o bootstrap.sh   # bei privatem Repo: Datei stattdessen per scp hochladen
-bash bootstrap.sh --domain regie.deinedomain.de --key "ssh-ed25519 AAAA… tallycall-actions"
+bash bootstrap.sh --domain tallycall.com --key "ssh-ed25519 AAAA… tallycall-actions"
 ```
 Bei einem **privaten Repo** funktioniert die `curl`-Zeile nicht ohne Anmeldung. Lade `deploy/bootstrap.sh` dann einfach per `scp deploy/bootstrap.sh root@DEINE-IP:` hoch.
 
@@ -37,10 +37,10 @@ Repo → **Settings → Secrets and variables → Actions → New repository sec
 Optional unter **Settings → Environments → production** Freigabe durch dich verlangen, dann deployt GitHub erst nach deinem Klick.
 
 ## 4. Erstes Deployment
-Auf `main` pushen (oder **Actions → CI und Deployment → Run workflow**). Der Ablauf: Tests → Code per rsync nach `/opt/tallycall` → `docker compose up -d --build` → Health-Check. Danach läuft Tallycall unter `https://regie.deinedomain.de`. Das erste Zertifikat dauert einige Sekunden.
+Auf `main` pushen (oder **Actions → CI und Deployment → Run workflow**). Der Ablauf: Tests → Code per rsync nach `/opt/tallycall` → `docker compose up -d --build` → Health-Check. Danach läuft Tallycall unter `https://tallycall.com`. Das erste Zertifikat dauert einige Sekunden.
 
 ## 5. Erstes Konto und Registrierung schließen
-Öffne `https://regie.deinedomain.de/signup` und lege dein Konto an. Setze danach auf dem VPS in `/opt/tallycall/.env` den Wert `ALLOW_SIGNUP=0` und starte neu (`cd /opt/tallycall && docker compose up -d`). Weitere Personen kommen dann nur noch per Einladung in ein Projekt. Ein Admin lädt sie unter **Projekteinstellungen → Mitglieder** ein. Wer noch kein Konto hat, braucht dafür vorübergehend `ALLOW_SIGNUP=1`.
+Öffne `https://tallycall.com/signup` und lege dein Konto an. Setze danach auf dem VPS in `/opt/tallycall/.env` den Wert `ALLOW_SIGNUP=0` und starte neu (`cd /opt/tallycall && docker compose up -d`). Weitere Personen kommen dann nur noch per Einladung in ein Projekt. Ein Admin lädt sie unter **Projekteinstellungen → Mitglieder** ein. Wer noch kein Konto hat, braucht dafür vorübergehend `ALLOW_SIGNUP=1`.
 
 ## Betrieb
 - **Logs:** `cd /opt/tallycall && docker compose logs -f app`
@@ -54,3 +54,8 @@ Auf `main` pushen (oder **Actions → CI und Deployment → Run workflow**). Der
 - Der Deploy-Schlüssel gehört nur zu diesem einen Benutzer ohne Passwort-Login. Gib ihn nirgends sonst ein.
 - Root-Login per Passwort besser abschalten (`PermitRootLogin prohibit-password` und `PasswordAuthentication no` in `/etc/ssh/sshd_config`), sobald dein eigener Schlüssel funktioniert.
 - Halte das System aktuell. Unattended-Upgrades ist aktiv, ein Neustart nach Kernel-Updates bleibt bei dir.
+
+## Vor dem öffentlichen Start
+- Impressum und Datenschutz auf der Landingpage sind noch Platzhalter (`#`). Echte Angaben eintragen.
+- Marke "Tallycall" bei DPMA/EUIPO/USPTO prüfen und die Domain beim Registrar bestätigen.
+- Das Deployment wurde noch nicht auf einem echten Server getestet. Beim ersten Lauf Logs beobachten.
