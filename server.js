@@ -43,6 +43,9 @@ const LOCAL_USER = { id: "local", name: "Lokal", email: "", local: true, siteAdm
 // ---------- Daten ----------
 const users = store.loadUsers();
 const purchases = store.loadPurchases();
+// Bestehende Installationen: Konten aus ADMIN_EMAIL werden Admin; gibt es keinen Admin, wird das älteste Konto Admin
+for (const u of users) if (ADMIN_EMAILS.includes(u.email)) u.siteAdmin = true;
+if (users.length && !users.some((u) => u.siteAdmin)) { users.slice().sort((x, y) => x.created - y.created)[0].siteAdmin = true; store.saveUsers(users); }
 const userById = (id) => users.find((u) => u.id === id);
 const userByEmail = (e) => users.find((u) => u.email === String(e).trim().toLowerCase());
 const hosts = new Map();
