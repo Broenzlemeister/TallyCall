@@ -3,6 +3,9 @@
 # GitHub Actions ruft nur diesen Befehl per SSH auf. Der Server zieht den Code selbst aus GitHub.
 set -e
 cd "$(dirname "$(readlink -f "$0")")/.."
+# Als root gestartet? Dann als Besitzer des Ordners weiterlaufen (git verweigert sonst "dubious ownership").
+OWNER=$(stat -c %U .)
+if [ "$(id -u)" = 0 ] && [ "$OWNER" != root ]; then exec sudo -u "$OWNER" -H "$(readlink -f "$0")" "$@"; fi
 echo "Sicherung der Daten."
 ./deploy/backup.sh || echo "  Sicherung übersprungen"
 echo "Hole Änderungen."
