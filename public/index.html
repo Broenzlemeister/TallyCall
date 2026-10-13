@@ -1,4 +1,4 @@
-<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Tallycall – Ablaufregie für Live-Events</title>
 <meta name="description" content="Tallycall plant und steuert Shows über mehrere Tage. Jedes Gewerk bekommt eigene Cues, jeder Screen bleibt im Takt.">
 <link rel="icon" href="/favicon.svg"><meta property="og:image" content="https://tallycall.com/og.png"><meta name="twitter:card" content="summary_large_image"><link rel="canonical" href="https://tallycall.com/">
@@ -82,14 +82,66 @@ footer { border-top:1px solid var(--line); padding:34px 0 50px; color:var(--mute
 .plan .pamt { font-size:48px; font-weight:600; letter-spacing:-.04em; line-height:1; } .plan .pamt small { display:block; font-size:15px; color:var(--mute); font-weight:400; letter-spacing:0; margin-top:8px; } .plan .note { color:var(--mute); font-size:13px; min-height:1.3em; }
 .plan ul { list-style:none; margin:0; padding:0; display:grid; gap:9px; } .plan li { display:flex; gap:10px; color:var(--fg2); font-size:14.5px; } .plan li::before { content:"✓"; color:var(--go); flex:none; font-weight:700; } .plan li.no { color:var(--mute); } .plan li.no::before { content:"–"; color:var(--faint); }
 .plan .btn { margin-top:auto; justify-content:center; padding:12px; font-size:15px; }
+
+/* ===== Handy und Tablet ===== */
+html { scroll-behavior:smooth; scroll-padding-top:70px; } body { overflow-x:hidden; }
+.two > *, .trio > *, .plans > *, .deploy > *, .roles > *, .lts > *, .timercard > * { min-width:0; }
+.burger { display:none; width:42px; height:42px; padding:0; border-radius:10px; background:transparent; border:1px solid var(--line2); flex-direction:column; justify-content:center; align-items:center; gap:4px; }
+.burger i { display:block; width:18px; height:2px; background:var(--fg); border-radius:2px; transition:transform .2s var(--ease), opacity .2s; }
+.burger[aria-expanded="true"] i:nth-child(1) { transform:translateY(6px) rotate(45deg); } .burger[aria-expanded="true"] i:nth-child(2) { opacity:0; } .burger[aria-expanded="true"] i:nth-child(3) { transform:translateY(-6px) rotate(-45deg); }
+@media (max-width:1024px) {
+  section { padding:76px 0; } .hero { padding:56px 0 52px; }
+  h1.hl { max-width:16ch; } .lead { max-width:60ch; }
+  .trio { grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; } .tile { padding:20px; }
+  .two, .two.rev { gap:36px; }
+  .win { box-shadow:0 24px 60px #000a, 0 0 0 1px #000; }
+}
+@media (max-width:860px) {
+  nav.top .c { gap:8px; height:58px; }
+  .burger { display:flex; margin-left:2px; }
+  nav.top .links { display:none; position:fixed; left:0; right:0; top:58px; margin:0; padding:10px 20px 18px; flex-direction:column; gap:0; background:#08090d; border-bottom:1px solid var(--line2); box-shadow:0 30px 60px #000c; max-height:calc(100vh - 58px); overflow:auto; }
+  nav.top .links.open { display:flex; }
+  nav.top .links a { padding:14px 4px; font-size:17px; border-bottom:1px solid var(--line); } nav.top .links a:last-child { border-bottom:0; }
+  .trio { grid-template-columns:1fr; } .plans { max-width:none; }
+}
+@media (max-width:600px) {
+  .c { width:calc(100% - 32px); }
+  nav.top select { max-width:88px; padding-right:22px; } nav.top .navlogin { display:none; } nav.top .navgo { padding:9px 13px; font-size:14px; } nav.top .brand { flex:none; } nav.top .brand { font-size:15px; }
+  section { padding:56px 0; } .hero { padding:36px 0 40px; } .final { padding:70px 0; }
+  .eyebrow-l { font-size:11px; letter-spacing:.1em; }
+  h1.hl { font-size:clamp(36px, 11.2vw, 54px); line-height:1; max-width:none; margin:20px 0 16px; letter-spacing:-.045em; }
+  html:is([lang="zh"],[lang="ja"]) h1.hl { font-size:clamp(32px,10vw,46px); }
+  h2.sec { font-size:clamp(27px, 8.2vw, 38px); max-width:none; }
+  .lead { font-size:16.5px; } .txt p { font-size:16px; } .txt li { font-size:15px; }
+  .cta { gap:10px; } .cta .btn { flex:1 1 100%; justify-content:center; padding:14px 18px; }
+  .small { font-size:13px; }
+  .win { border-radius:12px; margin-top:34px !important; } .win .bar { height:36px; padding:0 11px; } .win .bar .tabs2 { display:none; } .win .bar b { margin-left:6px; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mock { padding:10px; gap:10px; }
+  .tlm { grid-template-columns:62px minmax(0,1fr); font-size:9.5px; } .tlm .lab div { padding:0 6px; } .tlm .lab div span:not(.chip) { display:none; } .tlm .dl { display:none; }
+  .timercard { grid-template-columns:1fr; } .tc { padding:13px; } .tc .big2 { font-size:44px; }
+  .gewerkscr { padding:16px; } .gewerkscr h4 { font-size:21px; } .gewerkscr .nx { padding:15px; } .gewerkscr .nx b { font-size:23px; } .gewerkscr .nx .cd2 { font-size:46px; }
+  .lts { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; } .lt1 .l { font-size:9.5px; } .lt1 .l b { font-size:11px; }
+  .share { padding:10px; } .share .it { font-size:12.5px; }
+  .tile { padding:18px; border-radius:14px; } .tile h3 { font-size:18px; }
+  .deploy { margin-top:26px; } .deploy pre { font-size:12.5px; }
+  .plans { margin-top:28px; gap:12px; } .plan { padding:22px; border-radius:16px; } .plan .pamt { font-size:42px; }
+  .sig { padding:16px; font-size:11.5px; overflow-x:auto; white-space:nowrap; }
+  .tags, .tags2 { gap:6px; } .tags span, .tags2 span { padding:5px 11px; font-size:12.5px; }
+  .faq summary { font-size:15px; } .faq details { padding:14px 16px; }
+  footer { padding:28px 0 40px; } footer .c { gap:12px 20px; } footer .sp { flex-basis:100%; height:0; }
+}
+@media (max-width:520px) { nav.top .navgo { display:none; } nav.top .sp { flex:1; } }
+@media (max-width:380px) { h1.hl { font-size:34px; } }
+@media (hover:none) { .win { transform:none !important; } }
 </style></head>
 <body>
 <nav class="top"><div class="c">
   <a class="brand" href="/"><img src="/logo.svg" alt="">Tallycall</a>
-  <div class="links"><a href="#funktionen">Funktionen</a><a href="#timeline">Timeline</a><a href="#gewerke">Gewerke</a><a href="#bauchbinden">Bauchbinden</a><a href="#integrationen">Trigger</a><a href="#betrieb">Betrieb</a><a href="#preise">Preise</a><a href="#faq">FAQ</a></div>
+  <div class="links" id="menu"><a href="#funktionen">Funktionen</a><a href="#timeline">Timeline</a><a href="#gewerke">Gewerke</a><a href="#bauchbinden">Bauchbinden</a><a href="#integrationen">Trigger</a><a href="#betrieb">Betrieb</a><a href="#preise">Preise</a><a href="#faq">FAQ</a></div>
   <span class="sp"></span>
   <select id="langSel" aria-label="Sprache" translate="no"></select>
-  <a class="btn ghost" href="/login">Anmelden</a><a class="btn primary" href="/signup">Jetzt starten</a>
+  <a class="btn ghost navlogin" href="/login">Anmelden</a><a class="btn primary navgo" href="/signup">Jetzt starten</a>
+  <button class="burger" id="burger" aria-label="Menü" aria-expanded="false" aria-controls="menu"><i></i><i></i><i></i></button>
 </div></nav>
 
 <header class="hero"><div class="c" style="position:relative">
@@ -227,6 +279,8 @@ footer { border-top:1px solid var(--line); padding:34px 0 50px; color:var(--mute
 <footer><div class="c"><a class="brand" href="/"><img src="/logo.svg" alt="">Tallycall</a><span>Ablaufregie für Live-Events</span><span class="sp"></span><a href="/docs/osc">OSC</a><a href="/docs/api">API</a><a href="/impressum">Impressum</a><a href="/datenschutz">Datenschutz</a></div></footer>
 <script src="/i18n.js"></script>
 <script>
+(() => { const b = document.getElementById("burger"), m = document.getElementById("menu"); const set = (o) => { m.classList.toggle("open", o); b.setAttribute("aria-expanded", o); };
+  b.onclick = () => set(!m.classList.contains("open")); m.addEventListener("click", (e) => { if (e.target.closest("a")) set(false); }); document.addEventListener("keydown", (e) => e.key === "Escape" && set(false)); addEventListener("resize", () => innerWidth > 860 && set(false)); })();
 fetch("/api/config").then((r) => r.json()).then((c) => {
   if (!c.price) return;
   const cur = { EUR: "€", USD: "$", GBP: "£", CHF: "CHF" }[c.price.currency] || c.price.currency;

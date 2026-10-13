@@ -1,14 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
 <defs>
-<linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#9db1ff"/><stop offset="1" stop-color="#4fd1c5"/></linearGradient>
-<linearGradient id="t" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#151925"/><stop offset="1" stop-color="#0a0c11"/></linearGradient>
-<radialGradient id="l" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#3fd68f" stop-opacity=".6"/><stop offset="1" stop-color="#3fd68f" stop-opacity="0"/></radialGradient>
+<linearGradient id="bg" x1="8" y1="0" x2="56" y2="64" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#7f8dff"/><stop offset=".55" stop-color="#4f7cf0"/><stop offset="1" stop-color="#22c1b4"/></linearGradient>
+<linearGradient id="gl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".38"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/></linearGradient>
+<radialGradient id="lamp" cx=".35" cy=".3" r=".9"><stop offset="0" stop-color="#b9ffd9"/><stop offset=".45" stop-color="#3fd68f"/><stop offset="1" stop-color="#14a86a"/></radialGradient>
 </defs>
-<rect width="64" height="64" rx="15" fill="url(#t)"/>
-<rect x=".75" y=".75" width="62.5" height="62.5" rx="14.25" fill="none" stroke="#303747" stroke-width="1.5"/>
-<rect x="9" y="12" width="40" height="12" rx="6" fill="url(#g)"/>
-<rect x="23" y="24" width="12" height="29" rx="6" fill="url(#g)"/>
-<circle cx="49" cy="48" r="11" fill="url(#l)"/>
-<circle cx="49" cy="48" r="6" fill="#3fd68f"/>
-<circle cx="47.2" cy="46.2" r="1.7" fill="#d4ffe9" opacity=".95"/>
+<rect width="64" height="64" rx="18" fill="url(#bg)"/>
+<rect width="64" height="64" rx="18" fill="url(#gl)"/>
+<path d="M17 17.5h30a4 4 0 0 1 0 8H36v20.5a4 4 0 0 1-8 0V25.5H17a4 4 0 0 1 0-8z" fill="#fff"/>
+<circle cx="50" cy="50" r="9.5" fill="#0b0d12"/>
+<circle cx="50" cy="50" r="6.2" fill="url(#lamp)"/>
 </svg>

@@ -326,3 +326,116 @@ body.msgpage { display:grid; place-items:center; min-height:100vh; text-align:ce
 .code b { color:var(--fg); font-weight:500; }
 @media (max-width:900px) { .trow, .rrow { grid-template-columns:1fr 1fr; } .tlog div { grid-template-columns:1fr 1fr; } .insp { position:static; max-height:none; } }
 .tl.compact .tl-grp { font-size:9.5px; line-height:11px; padding:0 6px; top:2px; bottom:2px; border-radius:3px; }
+
+.cols.int { grid-template-columns:minmax(0,1fr) 380px; }
+/* ===== Handy und Tablet ===== */
+html { -webkit-text-size-adjust:100%; text-size-adjust:100%; }
+.cols > *, .row2 > * { min-width:0; }
+img, svg, canvas, video { max-width:100%; }
+.appbar { padding-left:max(18px, env(safe-area-inset-left)); padding-right:max(18px, env(safe-area-inset-right)); }
+.floatbar { top:max(12px, env(safe-area-inset-top)); }
+.card .tbl, .tbl-wrap .tbl { display:block; overflow-x:auto; max-width:100%; }
+.cue > span, .cue2 > *, .rd .r > * { min-width:0; }
+.cue span { overflow-wrap:break-word; }
+@media (hover:none) { .rd .r .acts { opacity:1; } .tl-bar .tl-m { opacity:1; } }
+@media (pointer:coarse) {
+  button, .btn, select, input:not([type=checkbox]):not([type=radio]):not([type=color]) { min-height:42px; }
+  .sm { min-height:36px; padding-left:11px; padding-right:11px; }
+  .rd .r { min-height:48px; } .rd .r .tog, .rd .r .hd { min-width:30px; min-height:30px; display:grid; place-items:center; }
+  .pal button { width:30px; height:30px; } .tl-h { width:18px; } .tl-m { width:20px; }
+  .tabs a, .tabs button { min-height:0; }
+}
+
+/* Tablet */
+@media (max-width:1100px) {
+  .wrap { padding:14px; }
+  .cols.ed, .cols, .cols.int { grid-template-columns:minmax(0,1fr); }
+  .insp { position:static; max-height:none; }
+  /* Inspector als Bogen von unten, sobald ein Punkt gewählt ist */
+  .insp.sheet { position:fixed; left:0; right:0; bottom:0; top:auto; z-index:75; max-height:84vh; margin:0; border-radius:18px 18px 0 0; border-width:1px 0 0; box-shadow:0 -24px 60px #000d; padding-bottom:max(16px, env(safe-area-inset-bottom)); overscroll-behavior:contain; animation:sheetin .22s var(--ease); }
+  .insp.sheet::before { content:""; display:block; width:42px; height:4px; border-radius:2px; background:var(--line3); margin:-4px auto 10px; }
+  body.sheetopen { overflow:hidden; } body.sheetopen::before { content:""; position:fixed; inset:0; z-index:70; background:#0009; }
+  @keyframes sheetin { from { transform:translateY(40px); opacity:0; } to { transform:none; opacity:1; } }
+  .now2 .tm2 { font-size:clamp(56px, 11vw, 100px); }
+  .stick { top:54px; }
+  .appbar { height:auto; flex-wrap:wrap; padding-top:8px; padding-bottom:0; gap:4px 12px; }
+  .appbar .proj { flex:1; min-width:0; } .appbar .sp { display:none; }
+  .tabs { order:9; flex:1 0 100%; margin:4px -18px 0; padding:0 18px; border-top:1px solid var(--line); align-self:auto; scrollbar-width:none; }
+  .tabs::-webkit-scrollbar { display:none; }
+  .tabs a, .tabs button { padding:12px 16px; white-space:nowrap; }
+  .appbar > .btn, .appbar > .avatar { margin-bottom:8px; } .appbar > .dot { margin-bottom:8px; }
+}
+/* Handy */
+@media (max-width:700px) {
+  body { font-size:15px; }
+  .appbar { height:auto; flex-wrap:wrap; gap:6px 8px; padding:8px max(12px, env(safe-area-inset-left)); position:sticky; }
+  .appbar .sep { display:none; }
+  .appbar .brand { font-size:0; gap:0; } .appbar .brand img { width:28px; height:28px; }
+  .appbar .proj { flex:1; min-width:0; } .appbar .proj b { max-width:none; }
+  .appbar .sp { display:none; }
+  .tabs { order:9; flex:1 0 100%; margin:0 -12px; padding:0 12px; align-self:auto; scrollbar-width:none; border-top:1px solid var(--line); }
+  .tabs::-webkit-scrollbar { display:none; }
+  .tabs a, .tabs button { padding:11px 14px; white-space:nowrap; border-bottom-width:3px; }
+  .appbar #uiScreens { order:3; } .appbar .btn.sm.ghost { display:none; } .appbar #langSel { max-width:92px; }
+  .appbar .draftchip { order:3; }
+  .stick { top:0; position:static; }
+  .wrap { padding:10px; }
+  .card { padding:13px; border-radius:11px; } .card + .card { margin-top:10px; }
+  input, textarea, select { font-size:16px; }
+  h1 { font-size:22px; }
+  .toolbar { gap:6px; } .toolbar .sp { display:none; } .toolbar select { width:100%; max-width:none; } .toolbar .hint { display:none; }
+  .modal { padding:16px; max-height:92vh; overflow:auto; }
+  .pop { position:fixed; left:8px !important; right:8px; top:auto !important; bottom:8px; max-height:70vh; overflow:auto; min-width:0 !important; }
+  .toast { left:12px; right:12px; transform:none; text-align:center; bottom:max(14px, env(safe-area-inset-bottom)); }
+
+  /* Regie */
+  .now2 { padding:14px; gap:10px; }
+  .now2 .ttl { font-size:24px; } .now2 .tm2 { font-size:clamp(52px, 19vw, 84px); text-align:left; }
+  .now2 .meta { justify-content:flex-start; gap:12px; }
+  .transport { gap:6px; } .transport .big { flex:1 1 calc(50% - 6px); min-width:0; padding:13px 10px; } .transport .grp { flex:1 1 auto; justify-content:center; } .transport .grp button { padding:9px 10px; flex:1; } .transport .sp { display:none; }
+  .transport .seg2 { flex:1 1 100%; } .transport .seg2 button { flex:1; }
+  .strip { height:104px; }
+  .cuestrip { max-height:none; } .cue { grid-template-columns:3.6em 2.6em minmax(0,1fr) auto; gap:7px; padding:8px; }
+  .gstat { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .ptabs { overflow-x:auto; scrollbar-width:none; } .ptabs button { white-space:nowrap; }
+
+  /* Rundown */
+  .rd .r { grid-template-columns:24px 5px 3.9em minmax(0,1fr) auto; gap:7px; padding:6px 8px 6px 4px; } .rd .r .dur { display:none; }
+  .rd .r .acts { grid-column:auto; } .rd .r .acts .ghost:not(.stop) { display:none; }
+  .rd .r[data-depth="1"] { margin-left:10px; } .rd .r[data-depth="2"] { margin-left:20px; } .rd .r[data-depth="3"] { margin-left:30px; }
+  .rd .r .t small { white-space:normal; }
+  .rd .r .cuech { display:none; }
+
+  /* Planung */
+  .insp .f2, .insp .f3 { grid-template-columns:1fr; }
+  .cue2 { grid-template-columns:18px minmax(0,1fr) 72px auto; } .cue2 > select { grid-column:2; } .cue2 > input[data-cf="text"] { grid-column:1 / -1; order:5; }
+  .actrow { grid-template-columns:1fr; }
+  .addmenu { width:100%; } .addmenu button { flex:1; }
+  .dayrow { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; padding-bottom:2px; } .dayrow button { flex:none; }
+  #dayCard .row2 > * { flex:1 1 100% !important; }
+
+  /* Integrationen, Verwaltung, Einstellungen */
+  .trow, .rrow { grid-template-columns:1fr; } .trow .sub { grid-template-columns:1fr; }
+  .tlog div { grid-template-columns:1fr; gap:2px; padding:7px 0; }
+  .stat { grid-template-columns:repeat(2,minmax(0,1fr)); } .stat .k b { font-size:21px; }
+  .cfg { grid-template-columns:1fr; }
+  .tbl th, .tbl td { padding:7px 6px; white-space:nowrap; }
+  .mrow { grid-template-columns:34px minmax(0,1fr); } .mrow select, .mrow button { grid-column:2; }
+  .srow { grid-template-columns:1fr; }
+  .picker a { padding:14px 18px; font-size:17px; flex:1 1 calc(50% - 12px); }
+  .gwrow { grid-template-columns:22px minmax(0,1fr) 54px auto; }
+  .styles { grid-template-columns:repeat(2,minmax(0,1fr)); }
+
+  /* Vollbild-Ansichten: Gewerke-Screen auf dem Handy */
+  .gv .cue { font-size:15px; gap:8px; } .gv .cue small { font-size:12px; }
+  .gv { padding:14px; } .gv h1 { font-size:34px; } .gv .meta { text-align:left; font-size:15px; }
+  .gv .nextcue { padding:18px; border-radius:14px; } .gv .nextcue .txt { font-size:30px; } .gv .nextcue .cd { font-size:min(26vw, 110px); }
+  .readybar button { padding:18px; font-size:19px; }
+  .list { padding:14px 12px 80px; } .list h1 { font-size:20px; flex-direction:column; gap:4px; }
+  .row { grid-template-columns:5px 4.4em minmax(0,1fr) auto; gap:10px; padding:10px 10px; font-size:15px; border-radius:10px; }
+  .row.d1 { margin-left:10px; } .row.d2 { margin-left:20px; } .row.d3 { margin-left:30px; } .gtitle { font-size:12px; } .gtitle.d1, .gtitle.d2 { margin-left:10px; font-size:11.5px; }
+  .next { font-size:15px; padding:12px 14px; flex-wrap:wrap; }
+  .clock-small { font-size:14px; top:10px; left:12px; }
+}
+/* Querformat Handy: Vollbild-Ansichten nutzen die Höhe */
+@media (max-height:480px) and (orientation:landscape) { .bigtime { font-size:min(26vw, 52vh); } .title { font-size:min(5vw, 9vh); } .center { gap:1vh; } }

@@ -1,4 +1,4 @@
-<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/app.css"><title>Planung</title>
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><link rel="stylesheet" href="/app.css"><title>Planung</title>
 <style>
 .cols.ed { grid-template-columns:minmax(0,1fr) 420px; }
 @media (max-width:1100px) { .cols.ed { grid-template-columns:1fr; } }
@@ -154,6 +154,7 @@ document.addEventListener("keydown", (e) => {
 const ENDS = [["", "Wie Einstellungen"], ["over", "Überzeit zählen"], ["next", "Automatisch weiter"], ["stop", "Bei 00:00 anhalten"]];
 function renderInsp(s) {
   const box = $("insp"), p = plan(s), f = selId && findP(selId);
+  document.body.classList.toggle("sheetopen", !!f); box.classList.toggle("sheet", !!f);
   if (!f) { const h = '<h3>Details</h3><p class="hint">Einen Punkt in der Liste anklicken, um ihn zu bearbeiten.</p><p class="hint">Tasten: N = neuer Punkt, P = Pause, G = Gruppe, Entf = löschen</p>'; if (inspSig !== h) { box.innerHTML = h; inspSig = h; } return; }
   const e = f.e, key = JSON.stringify([e, p.gewerke, p.lowers, s.integrations?.targets, f.day.id]);
   if (key === inspSig) return;
@@ -215,6 +216,8 @@ $("insp").addEventListener("click", (ev) => {
 });
 // Cues per Ziehen sortieren
 let cueDrag = null;
+document.body.addEventListener("click", (e) => { if (e.target === document.body && document.body.classList.contains("sheetopen")) { selId = null; rd.select(null); inspSig = ""; renderInsp(CL.state); } });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && selId && !e.target.closest("input,textarea,select")) { selId = null; rd.select(null); inspSig = ""; renderInsp(CL.state); } });
 $("insp").addEventListener("dragstart", (e) => { const r = e.target.closest(".cue2"); if (!r) return; cueDrag = Number(r.dataset.ci); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", "cue"); e.stopPropagation(); setTimeout(() => r.classList.add("dragging"), 0); });
 $("insp").addEventListener("dragover", (e) => { const r = e.target.closest(".cue2"); if (r && cueDrag != null) { e.preventDefault(); document.querySelectorAll(".cue2.over").forEach((x) => x.classList.remove("over")); r.classList.add("over"); } });
 $("insp").addEventListener("drop", (e) => { const r = e.target.closest(".cue2"); if (!r || cueDrag == null) return; e.preventDefault(); const to = Number(r.dataset.ci), cues = collectCues(), [m] = cues.splice(cueDrag, 1); cues.splice(to, 0, m); api({ type: "update", id: selId, data: { cues } }); cueDrag = null; });
