@@ -31,6 +31,7 @@
         <div style="flex:1;min-width:220px"><label style="margin-top:0">Hinweis zum Preis (optional)</label><input id="sNote" placeholder="z. B. inkl. MwSt., monatlich kündbar"></div>
       </div>
       <label>Zahlungslink (Stripe Payment Link, https://…)</label><input id="sPay" placeholder="https://buy.stripe.com/…"><p class="hint" id="sPayHint" style="margin:4px 0 0"></p>
+      <label>Kundenportal-Link (Stripe, damit Kunden ihr Abo selbst verwalten und kündigen)</label><input id="sPortal" placeholder="https://billing.stripe.com/p/login/…"><p class="hint" style="margin:4px 0 0">Stripe → Einstellungen → Billing → Kundenportal → „Link zum Kundenportal“. Pro-Kunden sehen in der App „Abo verwalten“.</p>
       <h3 style="margin-top:20px">Registrierung</h3>
       <label class="sw"><input type="checkbox" id="sSignup"> Neue Konten dürfen sich selbst registrieren</label>
       <h3 style="margin-top:20px">OSC-Eingang</h3>
@@ -118,7 +119,7 @@ let filled = false;
 function fillForms() {
   if (filled || !data.site) return; filled = true;
   const st = data.site, L = st.legal;
-  $("sPrice").value = st.price.amount; $("sCur").value = st.price.currency; $("sNote").value = st.price.note || ""; $("sPay").value = st.payLink; $("sSignup").checked = st.signup; $("sOsc").value = st.oscPort;
+  $("sPrice").value = st.price.amount; $("sCur").value = st.price.currency; $("sNote").value = st.price.note || ""; $("sPay").value = st.payLink; $("sPortal").value = st.portalLink || ""; $("sSignup").checked = st.signup; $("sOsc").value = st.oscPort;
   $("sPayHint").textContent = st.payLinkEnv && !st.payLink ? "Aktuell kommt der Link aus der Umgebungsvariable PAY_LINK." : "";
   document.querySelectorAll("[data-l]").forEach((el) => { const k = el.dataset.l; if (el.type === "checkbox") el.checked = !!L[k]; else el.value = L[k] ?? ""; });
 }
@@ -129,7 +130,7 @@ function paintStatus() {
   $("legalMissing").innerHTML = m.length ? `<span class="pill bad">Es fehlen noch: ${m.map((k) => names[k]).join(", ")}</span> Impressum und Datenschutz sind erst mit diesen Angaben vollständig.` : '<span class="pill ok">Pflichtangaben vorhanden</span>';
 }
 $("bSettings").onclick = async () => {
-  try { const r = await post("/api/admin/settings", { priceAmount: $("sPrice").value, priceCurrency: $("sCur").value, priceNote: $("sNote").value, payLink: $("sPay").value, signup: $("sSignup").checked, oscPort: $("sOsc").value }); toast("Gespeichert"); filled = false; await load(); } catch (e) { toast(e.message, true); }
+  try { const r = await post("/api/admin/settings", { priceAmount: $("sPrice").value, priceCurrency: $("sCur").value, priceNote: $("sNote").value, payLink: $("sPay").value, portalLink: $("sPortal").value, signup: $("sSignup").checked, oscPort: $("sOsc").value }); toast("Gespeichert"); filled = false; await load(); } catch (e) { toast(e.message, true); }
 };
 $("bLegal").onclick = async () => {
   const legal = {}; document.querySelectorAll("[data-l]").forEach((el) => { legal[el.dataset.l] = el.type === "checkbox" ? el.checked : el.value; });

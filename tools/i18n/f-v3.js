@@ -103,4 +103,5 @@ module.exports = [
   ["# Stream Deck → Tallycall", "# Stream Deck → Tallycall", "# Stream Deck → Tallycall", "# Stream Deck → Tallycall", "# Stream Deck → Tallycall", "# Stream Deck → Tallycall", "# Stream Deck → Tallycall", "# Stream Deck → Tallycall"],
   ["✓ Keynote läuft · 29:41", "✓ Keynote running · 29:41", "✓ Keynote en curso · 29:41", "✓ Keynote en cours · 29:41", "✓ Keynote in corso · 29:41", "✓ Keynote a decorrer · 29:41", "✓ Keynote 进行中 · 29:41", "✓ Keynote 実行中 · 29:41"],
   ["# Feedback → TouchOSC", "# Feedback → TouchOSC", "# Feedback → TouchOSC", "# Retour → TouchOSC", "# Feedback → TouchOSC", "# Feedback → TouchOSC", "# 反馈 → TouchOSC", "# フィードバック → TouchOSC"],
+  ["Abo verwalten", "Manage subscription", "Gestionar suscripción", "Gérer l’abonnement", "Gestisci abbonamento", "Gerir subscrição", "管理订阅", "サブスクリプションを管理"],
 ];

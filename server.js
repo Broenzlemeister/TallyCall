@@ -42,6 +42,7 @@ const site = (() => {
 })();
 const saveSite = () => store.saveSite(site);
 const payLink = () => site.payLink || PAY_LINK_ENV;
+const portalLink = () => site.portalLink || process.env.PORTAL_LINK || "";
 const signupOpen = () => (site.signup == null ? SIGNUP_ENV : !!site.signup);
 const oscPortNow = () => (site.oscPort != null && site.oscPort !== "" ? Number(site.oscPort) || 0 : OSC_ENV);
 
@@ -88,7 +89,7 @@ const touch = (h) => { h.meta.updated = Date.now(); store.saveProject(h); };
 const isSiteAdmin = (u) => !!u && (!!u.local || (ADMIN_EMAILS.length ? ADMIN_EMAILS.includes(String(u.email).toLowerCase()) : !!u.siteAdmin));
 const planOf = (u) => (!PLANS || isSiteAdmin(u) || (u && u.plan === "pro" && (!u.planUntil || u.planUntil + PLAN_GRACE > Date.now())) ? "pro" : "free");
 const limits = (u) => LIMITS[planOf(u)];
-const planInfo = (u) => ({ plan: planOf(u), until: u?.planUntil || 0, enforced: PLANS, payLink: payLink(), price: site.price, limits: { ...limits(u), projects: isFinite(limits(u).projects) ? limits(u).projects : 0, days: isFinite(limits(u).days) ? limits(u).days : 0, shares: isFinite(limits(u).shares) ? limits(u).shares : 0 } });
+const planInfo = (u) => ({ plan: planOf(u), until: u?.planUntil || 0, enforced: PLANS, payLink: payLink(), portalLink: portalLink(), price: site.price, limits: { ...limits(u), projects: isFinite(limits(u).projects) ? limits(u).projects : 0, days: isFinite(limits(u).days) ? limits(u).days : 0, shares: isFinite(limits(u).shares) ? limits(u).shares : 0 } });
 // Plan-Grenzen gelten nach dem Besitzer des Projekts (erster Admin), nicht nach der Person, die gerade arbeitet
 const ownerOf = (h) => { const m = h.meta.members.find((x) => x.role === "admin"); return m ? userById(m.userId) : null; };
 const limitsOf = (h, fallback) => limits(ownerOf(h) || fallback);
@@ -281,7 +282,7 @@ async function api(req, res, url, segs, user) {
   if (req.method === "OPTIONS") { res.writeHead(204, { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "Authorization, Content-Type, x-cl", "Access-Control-Allow-Methods": "GET, POST, OPTIONS" }); return res.end(); }
 
   if (a === "health") return send(res, 200, { ok: true });
-  if (a === "config") return send(res, 200, { auth: AUTH_ON, signup: signupOpen(), plans: PLANS, payLink: payLink(), price: site.price });
+  if (a === "config") return send(res, 200, { auth: AUTH_ON, signup: signupOpen(), plans: PLANS, payLink: payLink(), portalLink: portalLink(), price: site.price });
   if (a === "stripe" && b === "webhook" && post) return stripeWebhook(req, res);
 
   // Projekt-API mit Schlüssel (Companion, Stream Deck): kein Cookie, kein CSRF-Header nötig
@@ -565,7 +566,7 @@ async function siteAdminApi(req, res, segs, user, url) {
     return send(res, 200, {
       config: { auth: AUTH_ON, signup: signupOpen(), plans: PLANS, payLink: payLink(), stripe: !!STRIPE_SECRET, triggers: TRIGGERS, oscPort: oscPortNow(), planMonths: PLAN_MONTHS, adminEmails: ADMIN_EMAILS, adminLocked: ADMIN_EMAILS.length > 0, publicUrl: PUBLIC_URL, dataDir: DATA, version: require("./package.json").version },
       stats: { users: users.length, pro: users.filter((u) => planOf(u) === "pro" && !isSiteAdmin(u)).length, admins: users.filter(isSiteAdmin).length, projects: hosts.size, live, newWeek: users.filter((u) => now - u.created < 7 * 86400000).length, purchases: purchases.length, revenue, currency: purchases.find((p) => p.currency)?.currency || "" },
-      site: { legal: site.legal, price: site.price, payLink: site.payLink || "", payLinkEnv: !!PAY_LINK_ENV, oscPort: site.oscPort ?? "", oscEnv: OSC_ENV, osc: oscState, signup: signupOpen(), signupEnv: SIGNUP_ENV, legalMissing: Legal.missing(site.legal) },
+      site: { legal: site.legal, price: site.price, payLink: site.payLink || "", portalLink: site.portalLink || "", payLinkEnv: !!PAY_LINK_ENV, oscPort: site.oscPort ?? "", oscEnv: OSC_ENV, osc: oscState, signup: signupOpen(), signupEnv: SIGNUP_ENV, legalMissing: Legal.missing(site.legal) },
       users: users.map(row).sort((x, y) => y.created - x.created),
       purchases: purchases.slice(0, 300),
       projects: [...hosts.values()].map((h) => ({ id: h.meta.id, name: h.meta.name, members: h.meta.members.length, owner: userById(h.meta.members.find((m) => m.role === "admin")?.userId)?.email || "", days: h.state.days.length, updated: h.meta.updated, status: h.state.runtime.status })).sort((x, y) => y.updated - x.updated),
@@ -575,6 +576,7 @@ async function siteAdminApi(req, res, segs, user, url) {
   const d = await readBody(req), u = userById(d.userId);
   if (a === "settings") {
     if ("payLink" in d) { const v = String(d.payLink || "").trim().slice(0, 300); if (v && !/^https:\/\//.test(v)) return send(res, 400, { error: "Der Zahlungslink muss mit https:// beginnen" }); site.payLink = v; }
+    if ("portalLink" in d) { const v = String(d.portalLink || "").trim().slice(0, 300); if (v && !/^https:\/\//.test(v)) return send(res, 400, { error: "Der Kundenportal-Link muss mit https:// beginnen" }); site.portalLink = v; }
     if ("priceAmount" in d) { const v = String(d.priceAmount || "").trim().slice(0, 12); if (!/^\d{1,5}([.,]\d{1,2})?$/.test(v)) return send(res, 400, { error: "Bitte einen Preis wie 7,99 eingeben" }); site.price.amount = v; }
     if ("priceNote" in d) site.price.note = String(d.priceNote || "").trim().slice(0, 80);
     if ("priceCurrency" in d) site.price.currency = String(d.priceCurrency || "EUR").toUpperCase().slice(0, 3);

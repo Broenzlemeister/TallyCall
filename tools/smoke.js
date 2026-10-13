@@ -75,6 +75,7 @@ async function req(method, p, body, cookie, headers = {}) {
     ok((await req("GET", "/datenschutz?lang=de")).text.includes("5 Tagen"), "Datenschutz übernimmt die Log-Dauer");
     ok((await req("POST", "/api/admin/settings", { priceAmount: "9,99", priceNote: "inkl. MwSt.", payLink: "https://buy.stripe.com/test" }, c)).status === 200 && (await req("GET", "/api/config")).json.price.amount === "9,99", "Preis und Zahlungslink speichern, Konfiguration liefert den Preis");
     ok((await req("POST", "/api/admin/settings", { payLink: "http://evil" }, c)).status === 400, "Zahlungslink muss https sein");
+    ok((await req("POST", "/api/admin/settings", { portalLink: "https://billing.stripe.com/p/login/x" }, c)).status === 200 && (await req("GET", "/api/config")).json.portalLink.startsWith("https://billing"), "Kundenportal-Link speichern und ausliefern");
     ok((await req("POST", "/api/admin/settings", { priceAmount: "7,99" }, c)).status === 200, "Preis zurück auf 7,99");
     const crypto = require("crypto"), sendHook = async (ev) => { const body = JSON.stringify(ev), ts = Math.floor(Date.now() / 1000); return fetch(U + "/api/stripe/webhook", { method: "POST", headers: { "stripe-signature": `t=${ts},v1=` + crypto.createHmac("sha256", "whsec_smoke").update(ts + "." + body).digest("hex") }, body }); };
     const invoice = { id: "evt_a", type: "invoice.paid", data: { object: { id: "in_1", customer_email: "c@t.de", amount_paid: 799, currency: "eur" } } };

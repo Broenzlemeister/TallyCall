@@ -68,7 +68,7 @@ function upgrade() {
 function paintUser() {
   $("uiUser").textContent = (me.name || "?").slice(0, 1).toUpperCase(); $("greet").textContent = me.local ? "Lokaler Modus" : `Angemeldet als ${me.name}`;
   $("adminLink").hidden = !me.siteAdmin || me.local;
-  if (me.enforced && !me.local) { const p = $("planPill"); p.hidden = false; p.className = "pill " + (me.plan === "pro" ? "pro" : ""); p.innerHTML = me.plan === "pro" ? "Pro" + (me.until ? ` <span class="hint">${I18N.t("bis {d}", { d: new Date(me.until).toLocaleDateString(I18N.locale) })}</span>` : "") : `Free ${me.payLink ? `· <a href="#" id="upLink">${I18N.t("Auf Pro wechseln")}</a>` : ""}`; if ($("upLink")) $("upLink").onclick = (e) => { e.preventDefault(); upgrade(); }; }
+  if (me.enforced && !me.local) { const p = $("planPill"); p.hidden = false; p.className = "pill " + (me.plan === "pro" ? "pro" : ""); p.innerHTML = me.plan === "pro" ? "Pro" + (me.until ? ` <span class="hint">${I18N.t("bis {d}", { d: new Date(me.until).toLocaleDateString(I18N.locale) })}</span>` : "") + (me.portalLink && !me.siteAdmin ? ` · <a href="${E(me.portalLink)}" target="_blank" rel="noopener">${I18N.t("Abo verwalten")}</a>` : "") : `Free ${me.payLink ? `· <a href="#" id="upLink">${I18N.t("Auf Pro wechseln")}</a>` : ""}`; if ($("upLink")) $("upLink").onclick = (e) => { e.preventDefault(); upgrade(); }; }
 }
 document.addEventListener("cl-upgrade", (e) => { toast(e.detail, true); setTimeout(upgrade, 600); });
 $("list").addEventListener("click", (e) => { if (e.target.closest("[data-new]")) newProject(); });
