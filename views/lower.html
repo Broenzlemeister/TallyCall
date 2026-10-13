@@ -12,20 +12,21 @@ function size() { const d = window.devicePixelRatio || 1; cv.width = Math.round(
 function paint() { if (want) LT.draw(c, cv.width, cv.height, want, p); }
 function loop(t) {
   const dt = Math.min(0.1, (t - last) / 1000 || 0); last = t;
-  const target = want && want.visible ? 1 : 0, speed = 1 / 0.7;
+  const tm = LT.timing(want || {}), target = want && want.visible ? 1 : 0, speed = 1 / (target ? tm.IN : tm.OUT);
   p = target > p ? Math.min(1, p + dt * speed) : Math.max(0, p - dt * speed);
   paint();
   raf = p === target ? 0 : requestAnimationFrame(loop);
 }
 const kick = () => { if (!raf) { last = performance.now(); raf = requestAnimationFrame(loop); } };
 window.addEventListener("resize", size);
-document.fonts?.ready.then(paint);
+document.fonts?.ready.then(paint); LT.onImage(paint);
 CL.run((s) => {
   const l = s.lower, prev = want;
-  if (l.visible || !prev) want = { ...l }; else want = { ...prev, visible: false, key: l.key, style: prev.style }; // beim Ausblenden Inhalt behalten
+  if (l.visible || !prev) want = { ...l }; else want = { ...prev, visible: false, key: l.key, style: prev.style, design: prev.design }; // beim Ausblenden Inhalt behalten
+  if (want.design?.logo) LT.preload(want.design.logo).then(paint);
   if (!prev) size();
   if (!!prev?.visible !== !!l.visible || !raf && (p > 0 || l.visible)) kick();
-  if (l.visible && prev && (prev.title !== l.title || prev.subtitle !== l.subtitle || prev.style !== l.style || prev.accent !== l.accent || prev.key !== l.key || prev.pos !== l.pos)) paint();
+  if (l.visible && prev && (prev.title !== l.title || prev.subtitle !== l.subtitle || prev.style !== l.style || prev.accent !== l.accent || prev.key !== l.key || prev.pos !== l.pos || JSON.stringify(prev.design) !== JSON.stringify(l.design))) paint();
   else if (!l.visible && prev && prev.key !== l.key) paint();
 });
 </script></body></html>

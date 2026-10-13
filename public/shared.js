@@ -129,5 +129,35 @@
   // Platzhalter in Trigger-Texten: {title} {subtitle} {presenter} {id} {cue} {gewerk} {day} {show} {remaining} {clock}
   const fill = (tpl, vars) => String(tpl ?? "").replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k] ?? "") : m));
 
-  return { MAX_DEPTH, PALETTE, COLOR, nowParts, addDays, ancestors, depthOf, isDesc, blockOf, children, effSkip, normalize, schedule, projection, fmt, hhmm, hhmmss, parseHHMM, parseDur, fmtDur, signed, fill };
+  // ---- Bauchbinden-Design: Schema, Standardwerte, Bereinigung (Browser und Server nutzen dasselbe) ----
+  // Eintrag: [Typ, Min/Auswahl, Max, Standard]
+  const DESIGN = {
+    skew: ["n", 0, 40, 0], radius: ["n", 0, 60, 0], full: ["b", 0, 0, false],
+    bg: ["c", 0, 0, "#0a0c10"], bgAlpha: ["n", 0, 1, 0.94], glass: ["b", 0, 0, false],
+    border: ["n", 0, 10, 0], borderColor: ["c", 0, 0, "#ffffff"], shadow: ["n", 0, 1, 0.35],
+    accentMode: ["e", ["left", "top", "bottom", "dot", "none"], 0, "left"], accent: ["c", 0, 0, "#7c9cff"], accentSize: ["n", 0, 40, 14],
+    titleColor: ["c", 0, 0, "#ffffff"], subColor: ["c", 0, 0, "#b8bdc9"], titleSize: ["n", 24, 140, 54], subSize: ["n", 14, 90, 30],
+    titleWeight: ["n", 300, 900, 600], subWeight: ["n", 300, 900, 400], font: ["e", ["sans", "serif", "mono", "condensed", "rounded"], 0, "sans"],
+    upper: ["b", 0, 0, false], track: ["n", -3, 14, 0], textShadow: ["b", 0, 0, false], align: ["e", ["left", "center", "right"], 0, "left"],
+    padX: ["n", 6, 140, 38], padY: ["n", 4, 100, 24], gap: ["n", 0, 50, 8], minW: ["n", 0, 1, 0], maxW: ["n", 0.3, 1, 0.8],
+    ox: ["n", -0.5, 0.5, 0], oy: ["n", -0.5, 0.5, 0],
+    logo: ["l", 0, 0, ""], logoSize: ["n", 20, 240, 90], logoSide: ["e", ["left", "right"], 0, "left"], logoRound: ["b", 0, 0, false],
+    anim: ["e", ["slide", "fade", "rise", "wipe", "zoom", "none"], 0, "slide"], tIn: ["n", 0.2, 2, 0.7], tHold: ["n", 1, 30, 3.2], tOut: ["n", 0.2, 2, 0.7],
+  };
+  const designDefault = () => Object.fromEntries(Object.entries(DESIGN).map(([k, v]) => [k, v[3]]));
+  // Unbekannte Felder fallen weg, Werte werden begrenzt. Fehlende Felder bekommen den Standard (oder den Wert aus base).
+  function cleanDesign(d, base = designDefault()) {
+    const out = { ...base }; d = d && typeof d === "object" ? d : {};
+    for (const [k, [t, a, b, def]] of Object.entries(DESIGN)) {
+      if (!(k in d)) continue; const v = d[k];
+      if (t === "n") { const n = Number(v); out[k] = Number.isFinite(n) ? Math.min(b, Math.max(a, n)) : def; }
+      else if (t === "b") out[k] = !!v;
+      else if (t === "c") out[k] = /^#[0-9a-f]{6}$/i.test(v) ? String(v).toLowerCase() : def;
+      else if (t === "e") out[k] = a.includes(v) ? v : def;
+      else if (t === "l") out[k] = typeof v === "string" && v.length <= 90000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(v) ? v : "";
+    }
+    return out;
+  }
+
+  return { DESIGN, designDefault, cleanDesign, MAX_DEPTH, PALETTE, COLOR, nowParts, addDays, ancestors, depthOf, isDesc, blockOf, children, effSkip, normalize, schedule, projection, fmt, hhmm, hhmmss, parseHHMM, parseDur, fmtDur, signed, fill };
 });

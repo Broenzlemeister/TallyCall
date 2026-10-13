@@ -97,6 +97,18 @@ async function req(method, p, body, cookie, headers = {}) {
     ok((await req("GET", "/")).text.includes("7,99") && (await req("GET", "/")).text.includes("companion-module-tallycall.tgz"), "Landingpage zeigt Preis und Companion-Download");
     ok((await req("GET", "/api/p/" + pc + "/state", null, b.cookie)).status === 404, "Fremde Nutzer sehen das Projekt nicht");
     ok((await req("GET", "/api/me", null, c)).json.others.some((x) => x.id === pc), "Server-Admin sieht fremde Projekte unter „Alle Projekte“");
+    {
+      const A = (a) => req("POST", base + "/action", a, c), S = async () => (await req("GET", base + "/state", null, c)).json;
+      ok((await A({ type: "designSave", name: "Test", params: { skew: 999, accent: "#ff1f1f", evil: 1 } })).status === 200, "Design speichern");
+      let st = await S(), dz = st.lowerDesigns[0];
+      ok(dz && dz.params.skew === 40 && dz.params.accent === "#ff1f1f" && !("evil" in dz.params), "Design-Werte werden begrenzt und bereinigt");
+      ok((await A({ type: "designSave", name: "  ", params: {} })).status !== 200, "Design ohne Namen wird abgelehnt");
+      await A({ type: "lowerSave", title: "Design-Test", subtitle: "x", designId: dz.id }); st = await S();
+      const lw = st.lowers.find((q) => q.title === "Design-Test"); ok(lw && lw.designId === dz.id, "Bauchbinde bekommt Design zugewiesen");
+      await A({ type: "lower", data: { id: lw.id, visible: true } }); st = await S(); ok(st.lower.design && st.lower.design.accent === "#ff1f1f", "Live-Bauchbinde übernimmt das Design");
+      await A({ type: "lowerMove", id: lw.id, to: 0 }); st = await S(); ok(st.lowers[0].id === lw.id, "Bauchbinde umsortiert");
+      await A({ type: "designDelete", id: dz.id }); st = await S(); ok(st.lowerDesigns.length === 0 && st.lowers.find((q) => q.id === lw.id).designId === "", "Design löschen entfernt Zuweisung");
+    }
     ok((await req("GET", "/admin", null, c)).status === 200 && (await req("GET", "/admin", null, b.cookie)).status === 403, "Verwaltungsseite nur für Admins");
   } catch (e) { console.error(e); failed++; }
   srv.kill(); fs.rmSync(DATA, { recursive: true, force: true });

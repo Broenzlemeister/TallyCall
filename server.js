@@ -175,7 +175,8 @@ function describe(h, a, pre) {
     case "draftStart": return "Vorschau-Modus gestartet";
     case "draftDiscard": return "Entwurf verworfen";
     case "draftPublish": return "Entwurf live geschaltet";
-    case "lowerSave": case "lowerDelete": return "Bauchbinden-Liste geändert";
+    case "lowerSave": case "lowerDelete": case "lowerMove": return "Bauchbinden-Liste geändert";
+    case "designSave": case "designDelete": return "Bauchbinden-Designs geändert";
     case "targetAdd": case "targetUpdate": case "targetDelete": return "Trigger-Ziele geändert";
     case "ruleAdd": case "ruleUpdate": case "ruleDelete": return "Trigger-Regeln geändert";
     default: return null;

@@ -1,17 +1,29 @@
 <!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><link rel="stylesheet" href="/app.css"><title>Bauchbinden</title>
 <style>
 .checker { background:#1a1d24 repeating-conic-gradient(#232731 0 25%, #1a1d24 0 50%) 0 0/28px 28px; }
-.prev { position:relative; aspect-ratio:16/9; border-radius:var(--r); overflow:hidden; border:1px solid var(--line2); }
+.prev { position:relative; aspect-ratio:16/9; border-radius:var(--r); overflow:hidden; border:1px solid var(--line2); touch-action:none; cursor:grab; }
+.prev.drag { cursor:grabbing; }
 .prev canvas { position:absolute; inset:0; width:100%; height:100%; }
-.prev .ph { position:absolute; inset:0; background:linear-gradient(160deg,#2a3142,#10131a 60%); opacity:.9; } .prev.keyed .ph, .prev.checker .ph { display:none; }
-.styles { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
+.prev .ph { position:absolute; inset:0; background:linear-gradient(160deg,#2a3142,#10131a 60%); } .prev .ph.light { background:linear-gradient(160deg,#e8ebf1,#aeb6c6); } .prev .ph.black { background:#000; }
+.prev.keyed .ph, .prev.checker .ph { display:none; }
+.scrub { display:flex; gap:10px; align-items:center; margin-top:10px; } .scrub input { flex:1; min-width:0; }
+.tabs { display:flex; gap:4px; flex-wrap:wrap; margin-bottom:14px; } .tabs button { padding:7px 13px; }
+.tabs button[aria-pressed="true"] { background:var(--bg4); border-color:var(--focus); color:var(--fg); }
+.ctls { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:6px 22px; align-items:end; }
+.ctl label { margin-top:8px; display:flex; justify-content:space-between; gap:8px; } .ctl label output { color:var(--fg2); font-variant-numeric:tabular-nums; }
+.ctl input[type=range] { width:100%; } .ctl input[type=color] { width:100%; height:36px; padding:2px; }
+.ctl.chk label { flex-direction:row; align-items:center; justify-content:flex-start; gap:8px; margin-top:22px; } .ctl.chk input { width:auto; }
+.styles { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:10px; margin-bottom:16px; }
 .sty { padding:0; border:1px solid var(--line2); border-radius:10px; overflow:hidden; background:none; display:block; text-align:left; }
-.sty canvas { width:100%; display:block; aspect-ratio:16/9; background:linear-gradient(160deg,#2a3142,#10131a 60%); } .sty span { display:block; padding:6px 10px; font-size:12.5px; color:var(--fg2); }
+.sty canvas { width:100%; display:block; aspect-ratio:16/9; background:linear-gradient(160deg,#2a3142,#10131a 60%); } .sty span { display:block; padding:5px 9px; font-size:12.5px; color:var(--fg2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .sty[aria-pressed="true"] { border-color:var(--focus); box-shadow:0 0 0 1px var(--focus); } .sty[aria-pressed="true"] span { color:var(--fg); }
-.sw2 { display:flex; gap:6px; flex-wrap:wrap; align-items:center; } .sw2 button { width:30px; height:30px; border-radius:50%; padding:0; border:2px solid var(--line3); background:var(--c); } .sw2 button[aria-pressed="true"] { border-color:#fff; box-shadow:0 0 0 2px var(--bg); }
 .keys button { display:inline-flex; gap:7px; align-items:center; } .keys i { width:14px; height:14px; border-radius:4px; border:1px solid var(--line3); background:var(--k); }
 .keys button[aria-pressed="true"] { border-color:var(--focus); background:var(--bg4); }
-.lowrow { display:flex; gap:10px; align-items:center; padding:9px 10px; background:var(--bg2); border:1px solid var(--line); border-radius:var(--r2); margin:5px 0; } .lowrow .nm { flex:1; min-width:0; } .lowrow .nm div { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.lowrow { display:flex; gap:8px; align-items:center; padding:8px 9px; background:var(--bg2); border:1px solid var(--line); border-radius:var(--r2); margin:5px 0; flex-wrap:wrap; } .lowrow .nm { flex:1; min-width:110px; } .lowrow .nm div { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.lowrow.over { border-color:var(--focus); } .lowrow .grip { cursor:grab; color:var(--fg3); padding:0 4px; user-select:none; } .lowrow select { width:auto; max-width:130px; padding:5px 8px; font-size:12.5px; }
+.drow { display:flex; gap:8px; align-items:center; margin:6px 0; } .drow canvas { width:96px; aspect-ratio:16/9; border-radius:6px; background:linear-gradient(160deg,#2a3142,#10131a 60%); flex:none; } .drow .nm { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .drow.cur .nm { color:var(--focus); }
+.logoBox { display:flex; gap:14px; align-items:center; flex-wrap:wrap; margin-bottom:10px; } .logoBox .lp { width:120px; height:68px; border:1px dashed var(--line3); border-radius:8px; display:grid; place-items:center; background:#1a1d24; overflow:hidden; font-size:12px; color:var(--fg3); } .logoBox .lp img { max-width:100%; max-height:100%; }
+.logoBox.over .lp { border-color:var(--focus); }
 </style></head>
 <body>
 <header id="appbar"></header>
@@ -20,33 +32,40 @@
     <section>
       <div class="card">
         <h3>Vorschau</h3>
-        <div class="prev checker" id="prev"><div class="ph"></div><canvas id="cv"></canvas></div>
+        <div class="prev checker" id="prev"><div class="ph" id="ph"></div><canvas id="cv"></canvas></div>
+        <div class="scrub"><button id="bPlay" class="sm">▶ Animation</button><input type="range" id="scrub" min="0" max="1" step="0.01" value="1" aria-label="Animationsfortschritt"><span class="hint" id="dragHint" style="margin:0">Ziehen zum Verschieben</span></div>
         <div class="row2" style="margin-top:12px">
-          <button id="bPlay">▶ Animation ansehen</button>
+          <span class="seg" id="pbg"><button data-v="stage">Bühne</button><button data-v="light">Hell</button><button data-v="black">Schwarz</button></span>
           <span style="flex:1"></span>
           <span class="badge" id="liveBadge">nicht live</span>
           <button id="bLive" class="go">Einblenden (live)</button><button id="bHide">Ausblenden</button>
         </div>
       </div>
       <div class="card">
-        <h3>Text</h3>
-        <div class="row2"><div style="flex:1;min-width:220px"><label style="margin-top:0">Titel (Name)</label><input id="fTitle" placeholder="Anna Beispiel"></div><div style="flex:1;min-width:220px"><label style="margin-top:0">Untertitel (Funktion)</label><input id="fSub" placeholder="Keynote Speaker"></div></div>
-        <div class="row2" style="margin-top:12px"><button id="bSave" class="sm">In Liste speichern</button><span class="hint">Gespeicherte Bauchbinden lassen sich im Regie-Pult mit einem Klick einblenden.</span></div>
+        <div class="tabs seg" id="tabs"><button data-v="text">Text</button><button data-v="look">Look</button><button data-v="type">Schrift</button><button data-v="layout">Layout</button><button data-v="logo">Logo</button><button data-v="anim">Animation</button></div>
+        <div id="pane"></div>
       </div>
       <div class="card">
-        <h3>Stil</h3><div class="styles" id="styles"></div>
-        <div class="row2" style="margin-top:16px;align-items:flex-start;gap:28px">
-          <div><label style="margin-top:0">Position</label><span class="seg" id="pos"><button data-v="left">Links</button><button data-v="center">Mitte</button><button data-v="right">Rechts</button></span></div>
-          <div><label style="margin-top:0">Akzentfarbe</label><div class="sw2" id="accent"></div></div>
-        </div>
-      </div>
-      <div class="card">
-        <h3>Keying-Hintergrund</h3>
+        <h3>Keying-Hintergrund der Ausgabe</h3>
         <div class="row2 keys" id="keys"></div>
         <p class="hint" style="margin-bottom:0">Transparent für OBS (Browserquelle) und Mischer mit Alpha. Mit Keying-Farbe füllt die Ausgabe den Hintergrund einfarbig, den du im Mischer (vMix, ATEM, Resolume) per Chroma-Key entfernst. Grün ist üblich, Blau oder Magenta helfen bei grünen Motiven.</p>
       </div>
     </section>
     <aside>
+      <div class="card">
+        <h3>Meine Designs</h3>
+        <div id="designs"></div>
+        <div class="row2" style="margin-top:10px"><input id="dName" placeholder="Name des Designs" maxlength="40" style="flex:1;min-width:120px"><button id="bDesign" class="sm primary">Speichern</button></div>
+        <p class="hint" style="margin-bottom:0">Designs gelten für das ganze Projekt. Jeder Bauchbinde lässt sich ein Design zuweisen.</p>
+      </div>
+      <div class="card">
+        <h3>Gespeicherte Bauchbinden</h3><div id="list"></div>
+        <div class="row2" style="margin-top:10px"><button id="bSave" class="sm">Aktuellen Text speichern</button></div>
+        <details style="margin-top:12px"><summary class="hint" style="cursor:pointer">Mehrere auf einmal anlegen</summary>
+          <textarea id="bulk" rows="5" placeholder="Anna Beispiel; Keynote Speaker&#10;Ben Muster; Moderation" style="margin-top:8px"></textarea>
+          <div class="row2" style="margin-top:8px"><button id="bBulk" class="sm">Importieren</button><span class="hint">Eine Zeile pro Bauchbinde: Name; Funktion</span></div>
+        </details>
+      </div>
       <div class="card">
         <h3>Export</h3>
         <label style="margin-top:0">Auflösung</label>
@@ -55,77 +74,201 @@
           <button id="bPng" class="primary">Als PNG exportieren</button>
           <button id="bWebm">Animation als WebM exportieren</button>
         </div>
-        <p class="hint" id="expMsg" style="margin-bottom:0">PNG mit Alpha-Kanal, wenn der Hintergrund transparent ist. WebM enthält Einblenden, Halten und Ausblenden (ca. 4,4 s). Transparenz im Video hängt vom Browser ab, mit Keying-Farbe ist es immer sicher.</p>
+        <p class="hint" id="expMsg" style="margin-bottom:0">PNG mit Alpha-Kanal, wenn der Hintergrund transparent ist. WebM enthält Einblenden, Halten und Ausblenden. Transparenz im Video hängt vom Browser ab, mit Keying-Farbe ist es immer sicher.</p>
       </div>
       <div class="card">
         <h3>Live-Ausgabe</h3>
         <p class="hint" style="margin-top:0">Als Browserquelle in OBS oder vMix mit 1920 × 1080 einbinden.</p>
         <button id="bShare" class="sm">Link für OBS/vMix kopieren</button>
       </div>
-      <div class="card">
-        <h3>Gespeicherte Bauchbinden</h3><div id="list"></div>
-      </div>
     </aside>
   </div>
 </div>
 <script src="/i18n.js"></script><script src="/shared.js"></script><script src="/common.js"></script><script src="/ui.js"></script><script src="/lowerthird.js"></script>
 <script>
-const $ = (i) => document.getElementById(i), E = CL.esc, api = (a) => CL.api(a).catch((e) => e.message !== "abgebrochen" && UI.toast(e.message, true));
+const $ = (i) => document.getElementById(i), E = CL.esc, api = (a) => CL.api(a).catch((e) => { if (e.message !== "abgebrochen") UI.toast(e.message, true); throw e; });
+const apiq = (a) => api(a).catch(() => {});
 UI.bar("grafik");
-const ACCENTS = ["#7c9cff", "#4fd1a1", "#f5b942", "#ff7a7a", "#b58cff", "#ff8fd0", "#5ad6e8", "#ffffff"];
-let cfg = null, p = 1, anim = 0; // cfg = lokale Gestaltung, wird erst mit „Einblenden“ live
+const SPEC = CLS.DESIGN, SAMPLE = { t: "Anna Beispiel", s: "Keynote Speaker" };
+const KEEP = ["logo", "logoSize", "logoSide", "logoRound", "anim", "tIn", "tHold", "tOut", "ox", "oy"];
+let cfg = null, p = 1, anim = 0, tab = "text", pbg = "stage", curDesign = "";
 const prev = $("prev"), cv = $("cv"), c2 = cv.getContext("2d");
 
+// Felder je Reiter: [key, Label, Typ, Optionen]
+const FIELDS = {
+  look: [["accentMode", "Akzent", "sel", [["left", "Balken links"], ["top", "Linie oben"], ["bottom", "Linie unten"], ["dot", "Punkt"], ["none", "Keiner"]]], ["accent", "Akzentfarbe", "col"], ["accentSize", "Akzentstärke", "rng"],
+    ["bg", "Boxfarbe", "col"], ["bgAlpha", "Deckkraft", "rng"], ["glass", "Glas-Effekt", "chk"], ["full", "Volle Breite", "chk"], ["skew", "Schräge", "rng"], ["radius", "Rundung", "rng"], ["border", "Rahmen", "rng"], ["borderColor", "Rahmenfarbe", "col"], ["shadow", "Schatten", "rng"]],
+  type: [["font", "Schriftart", "sel", [["sans", "Modern (Sans)"], ["condensed", "Schmal"], ["rounded", "Rund"], ["serif", "Serif"], ["mono", "Mono"]]], ["titleSize", "Titelgröße", "rng"], ["titleWeight", "Titel-Stärke", "rng"], ["titleColor", "Titelfarbe", "col"],
+    ["subSize", "Untertitelgröße", "rng"], ["subWeight", "Untertitel-Stärke", "rng"], ["subColor", "Untertitelfarbe", "col"], ["track", "Zeichenabstand", "rng"], ["upper", "Großbuchstaben", "chk"], ["textShadow", "Textschatten", "chk"]],
+  layout: [["padX", "Innenabstand seitlich", "rng"], ["padY", "Innenabstand oben/unten", "rng"], ["gap", "Abstand Titel/Untertitel", "rng"], ["minW", "Mindestbreite", "rng"], ["maxW", "Maximale Breite", "rng"], ["ox", "Versatz horizontal", "rng"], ["oy", "Versatz vertikal", "rng"]],
+  anim: [["anim", "Einblendung", "sel", [["slide", "Einfahren"], ["fade", "Überblenden"], ["rise", "Aufsteigen"], ["wipe", "Aufziehen"], ["zoom", "Zoom"], ["none", "Ohne"]]], ["tIn", "Dauer rein (s)", "rng"], ["tHold", "Standzeit für Export (s)", "rng"], ["tOut", "Dauer raus (s)", "rng"]],
+};
+const stepOf = (k) => { const [, a, b] = SPEC[k]; return k[0] === "t" && k.length <= 5 && k !== "title" ? 0.05 : (k === "ox" || k === "oy") ? 0.005 : b - a <= 2 ? 0.01 : 1; };
+const showV = (k, v) => (k === "ox" || k === "oy" || SPEC[k][2] <= 1 && k !== "tIn" ? Math.round(v * 100) + " %" : typeof v === "number" ? String(Math.round(v * 100) / 100) : v);
+
 function fitCanvas() { const r = prev.getBoundingClientRect(), d = window.devicePixelRatio || 1; const w = Math.round(r.width * d), h = Math.round(r.height * d); if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; } }
-function paint() { if (!cfg) return; fitCanvas(); LT.draw(c2, cv.width, cv.height, cfg, p); prev.classList.toggle("checker", cfg.key === "none"); prev.classList.toggle("keyed", cfg.key !== "none"); }
+const view = () => ({ title: cfg.title, subtitle: cfg.subtitle, pos: cfg.pos, key: cfg.key, accent: cfg.design.accent, design: cfg.design });
+function paint() {
+  if (!cfg) return; fitCanvas(); LT.draw(c2, cv.width, cv.height, { ...view(), key: "none" }, p);
+  const keyed = cfg.key !== "none"; prev.classList.toggle("checker", false); prev.classList.toggle("keyed", keyed); prev.style.background = keyed ? cfg.key : "";
+  $("ph").className = "ph " + (pbg === "stage" ? "" : pbg);
+}
+function miniDraw(cnv, design, t = cfg.title || SAMPLE.t, s = cfg.subtitle || SAMPLE.s) {
+  const c = cnv.getContext("2d"); LT.draw(c, cnv.width, cnv.height, { title: t, subtitle: s, pos: "left", key: "none", design: { ...design, anim: "none", ox: 0, oy: 0, full: design.full, minW: 0 } }, 1);
+}
 function thumbs() {
-  $("styles").innerHTML = LT.STYLES.map((s) => `<button class="sty" data-v="${s.id}" aria-pressed="${cfg.style === s.id}"><canvas width="320" height="180"></canvas><span>${s.name}</span></button>`).join("");
-  $("styles").querySelectorAll(".sty").forEach((b, i) => LT.draw(b.querySelector("canvas").getContext("2d"), 320, 180, { title: cfg.title || "Anna Beispiel", subtitle: cfg.subtitle || "Keynote Speaker", style: LT.STYLES[i].id, accent: cfg.accent, pos: cfg.pos === "center" ? "left" : cfg.pos, key: "none" }, 1));
+  $("designs").innerHTML = (CL.state?.lowerDesigns || []).map((d) => `<div class="drow${d.id === curDesign ? " cur" : ""}" data-id="${E(d.id)}"><canvas width="192" height="108"></canvas><div class="nm" translate="no">${E(d.name)}</div><button class="sm" data-a="load">Laden</button><button class="sm" data-a="upd" title="Mit den aktuellen Einstellungen überschreiben">↻</button><button class="sm stop" data-a="del">✕</button></div>`).join("") || '<p class="hint">Noch keine eigenen Designs.</p>';
+  $("designs").querySelectorAll(".drow").forEach((r) => miniDraw(r.querySelector("canvas"), CLS.cleanDesign(CL.state.lowerDesigns.find((x) => x.id === r.dataset.id).params)));
+  const pv = $("pane").querySelector(".styles"); if (pv) pv.querySelectorAll(".sty").forEach((b) => miniDraw(b.querySelector("canvas"), b.dataset.v === "_cur" ? cfg.design : LT.presetDesign(b.dataset.v)));
 }
-function controls() {
-  $("pos").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.v === cfg.pos));
-  $("accent").innerHTML = ACCENTS.map((a) => `<button style="--c:${a}" data-v="${a}" aria-pressed="${cfg.accent.toLowerCase() === a}" title="${a}"></button>`).join("") + `<input type="color" id="accentPick" value="${cfg.accent}" title="Eigene Farbe">`;
+function ctl([k, label, type, opts]) {
+  const v = cfg.design[k];
+  if (type === "chk") return `<div class="ctl chk"><label><input type="checkbox" data-k="${k}" ${v ? "checked" : ""}>${label}</label></div>`;
+  if (type === "col") return `<div class="ctl"><label>${label}</label><input type="color" data-k="${k}" value="${v}"></div>`;
+  if (type === "sel") return `<div class="ctl"><label>${label}</label><select data-k="${k}">${opts.map(([o, n]) => `<option value="${o}"${o === v ? " selected" : ""}>${n}</option>`).join("")}</select></div>`;
+  const [, a, b] = SPEC[k];
+  return `<div class="ctl"><label>${label}<output>${showV(k, v)}</output></label><input type="range" data-k="${k}" min="${a}" max="${b}" step="${stepOf(k)}" value="${v}"></div>`;
+}
+function pane() {
+  const el = $("pane");
+  $("tabs").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.v === tab));
+  if (tab === "text") {
+    el.innerHTML = `<div class="row2"><div style="flex:1;min-width:220px"><label style="margin-top:0">Titel (Name)</label><input id="fTitle" placeholder="Anna Beispiel" maxlength="120"></div><div style="flex:1;min-width:220px"><label style="margin-top:0">Untertitel (Funktion)</label><input id="fSub" placeholder="Keynote Speaker" maxlength="160"></div></div>
+    <div class="row2" style="margin-top:14px;align-items:flex-start;gap:28px"><div><label style="margin-top:0">Position</label><span class="seg" id="pos"><button data-v="left">Links</button><button data-v="center">Mitte</button><button data-v="right">Rechts</button></span></div><div><label style="margin-top:0">Textausrichtung</label><span class="seg" id="aln"><button data-v="left">Links</button><button data-v="center">Mitte</button><button data-v="right">Rechts</button></span></div></div>
+    <label>Vorlage</label><div class="styles">${[["_cur", "Aktuell"], ...LT.PRESETS.map((x) => [x.id, x.name])].map(([id, n]) => `<button class="sty" data-v="${id}"><canvas width="320" height="180"></canvas><span>${n}</span></button>`).join("")}</div>`;
+    $("fTitle").value = cfg.title; $("fSub").value = cfg.subtitle; marks();
+  } else if (tab === "logo") {
+    const d = cfg.design;
+    el.innerHTML = `<div class="logoBox" id="lbox"><div class="lp">${d.logo ? `<img src="${d.logo}" alt="">` : "Logo hierher ziehen"}</div><div><input type="file" id="lfile" accept="image/png,image/jpeg,image/webp,image/svg+xml" style="display:none"><button class="sm" id="bLogo">Bild wählen</button> ${d.logo ? '<button class="sm stop" id="bLogoDel">Entfernen</button>' : ""}<p class="hint" style="margin:6px 0 0">PNG, JPG, WebP oder SVG. Wird automatisch verkleinert.</p></div></div>
+    <div class="ctls">${[["logoSize", "Logogröße", "rng"], ["logoSide", "Seite", "sel", [["left", "Links"], ["right", "Rechts"]]], ["logoRound", "Rund zuschneiden", "chk"]].map(ctl).join("")}</div>`;
+  } else {
+    el.innerHTML = `<div class="ctls">${FIELDS[tab].map(ctl).join("")}</div>${tab === "layout" ? '<div class="row2" style="margin-top:12px"><button class="sm" id="bReset">Versatz zurücksetzen</button></div>' : ""}`;
+  }
+  thumbs();
+}
+function marks() {
+  $("pos")?.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.v === cfg.pos));
+  $("aln")?.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.v === cfg.design.align));
+  $("pane").querySelectorAll(".sty").forEach((b) => b.setAttribute("aria-pressed", b.dataset.v === "_cur"));
+}
+function keys() {
   $("keys").innerHTML = LT.KEYS.map((k) => `<button data-v="${k.id}" style="--k:${k.id === "none" ? "transparent" : k.id}" aria-pressed="${cfg.key === k.id}"><i style="${k.id === "none" ? "background:repeating-conic-gradient(#444 0 25%,#222 0 50%) 0 0/8px 8px" : ""}"></i>${k.name}</button>`).join("") + `<input type="color" id="keyPick" value="${cfg.key === "none" ? "#00ff00" : cfg.key}" title="Eigene Keying-Farbe" style="margin-left:6px">`;
-  thumbs(); paint();
 }
-function set(patch) { Object.assign(cfg, patch); controls(); }
-$("fTitle").oninput = () => { cfg.title = $("fTitle").value; paint(); }; $("fSub").oninput = () => { cfg.subtitle = $("fSub").value; paint(); };
-$("fTitle").onchange = $("fSub").onchange = thumbs;
-$("styles").onclick = (e) => { const b = e.target.closest(".sty"); if (b) set({ style: b.dataset.v }); };
-$("pos").onclick = (e) => { const b = e.target.closest("button"); if (b) set({ pos: b.dataset.v }); };
-$("accent").onclick = (e) => { const b = e.target.closest("button"); if (b) set({ accent: b.dataset.v }); };
-$("accent").oninput = (e) => { if (e.target.id === "accentPick") { cfg.accent = e.target.value; thumbs(); paint(); } };
-$("keys").onclick = (e) => { const b = e.target.closest("button"); if (b) set({ key: b.dataset.v }); };
+const setD = (patch) => { Object.assign(cfg.design, patch); cfg.design = CLS.cleanDesign(cfg.design); };
+
+$("tabs").onclick = (e) => { const b = e.target.closest("button"); if (b) { tab = b.dataset.v; pane(); } };
+$("pane").addEventListener("input", (e) => {
+  const t = e.target;
+  if (t.id === "fTitle") { cfg.title = t.value; return paint(); } if (t.id === "fSub") { cfg.subtitle = t.value; return paint(); }
+  const k = t.dataset.k; if (!k) return;
+  setD({ [k]: t.type === "checkbox" ? t.checked : t.type === "range" ? Number(t.value) : t.value });
+  const o = t.parentElement.querySelector("output"); if (o) o.textContent = showV(k, cfg.design[k]);
+  paint();
+});
+$("pane").addEventListener("change", (e) => { if (e.target.id === "fTitle" || e.target.id === "fSub" || e.target.dataset.k) { thumbs(); if (e.target.tagName === "SELECT" || e.target.type === "checkbox") { replay(); } } });
+$("pane").addEventListener("click", (e) => {
+  const t = e.target.closest("button"); if (!t) return;
+  if (t.classList.contains("sty")) { if (t.dataset.v !== "_cur") { const keep = Object.fromEntries(KEEP.map((k) => [k, cfg.design[k]])); cfg.design = LT.presetDesign(t.dataset.v, keep); curDesign = ""; pane(); paint(); } }
+  else if (t.closest("#pos")) { cfg.pos = t.dataset.v; marks(); paint(); }
+  else if (t.closest("#aln")) { setD({ align: t.dataset.v }); marks(); paint(); }
+  else if (t.id === "bReset") { setD({ ox: 0, oy: 0 }); pane(); paint(); }
+  else if (t.id === "bLogo") $("lfile").click();
+  else if (t.id === "bLogoDel") { setD({ logo: "" }); pane(); paint(); }
+});
+$("pane").addEventListener("change", (e) => { if (e.target.id === "lfile" && e.target.files[0]) takeLogo(e.target.files[0]); });
+$("pane").addEventListener("dragover", (e) => { if (e.target.closest("#lbox")) { e.preventDefault(); $("lbox").classList.add("over"); } });
+$("pane").addEventListener("dragleave", () => $("lbox")?.classList.remove("over"));
+$("pane").addEventListener("drop", (e) => { if (e.target.closest("#lbox")) { e.preventDefault(); $("lbox").classList.remove("over"); const f = e.dataTransfer.files[0]; if (f) takeLogo(f); } });
+// Logo verkleinern, bis es ins Limit passt (Data-URL ≤ 90 000 Zeichen)
+async function takeLogo(file) {
+  try {
+    if (!/^image\//.test(file.type)) throw new Error("Bitte eine Bilddatei wählen");
+    const url = URL.createObjectURL(file), im = new Image(); im.src = url; await im.decode().catch(() => { throw new Error("Bild konnte nicht gelesen werden"); });
+    const iw = im.naturalWidth || 256, ih = im.naturalHeight || 256; let out = "";
+    for (const m of [256, 192, 144, 112, 80, 56]) {
+      const k = Math.min(1, m / Math.max(iw, ih)), c = document.createElement("canvas"); c.width = Math.max(1, Math.round(iw * k)); c.height = Math.max(1, Math.round(ih * k)); c.getContext("2d").drawImage(im, 0, 0, c.width, c.height);
+      const png = c.toDataURL("image/png"); if (png.length <= 89000) { out = png; break; }
+      const wp = c.toDataURL("image/webp", 0.85); if (/^data:image\/webp/.test(wp) && wp.length <= 89000) { out = wp; break; }
+    }
+    URL.revokeObjectURL(url); if (!out) throw new Error("Das Bild ist zu detailreich. Bitte ein einfacheres Logo nutzen.");
+    setD({ logo: out }); pane(); paint();
+  } catch (e) { UI.toast(e.message, true); }
+}
+LT.onImage(() => { paint(); thumbs(); });
+
+$("pbg").onclick = (e) => { const b = e.target.closest("button"); if (b) { pbg = b.dataset.v; $("pbg").querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", x.dataset.v === pbg)); paint(); } };
+$("keys").onclick = (e) => { const b = e.target.closest("button"); if (b) { cfg.key = b.dataset.v; keys(); paint(); } };
 $("keys").oninput = (e) => { if (e.target.id === "keyPick") { cfg.key = e.target.value; paint(); } };
-$("bPlay").onclick = () => { cancelAnimationFrame(anim); const t0 = performance.now(); (function f(t) { const s = (t - t0) / 1000; p = s < 0.7 ? s / 0.7 : s < 3.2 ? 1 : Math.max(0, 1 - (s - 3.2) / 0.7); paint(); if (s < 3.9) anim = requestAnimationFrame(f); else { p = 1; paint(); } })(t0); };
-const liveCfg = () => ({ title: cfg.title, subtitle: cfg.subtitle, style: cfg.style, pos: cfg.pos, accent: cfg.accent, key: cfg.key });
-$("bLive").onclick = () => api({ type: "lower", data: { ...liveCfg(), visible: true } });
-$("bHide").onclick = () => api({ type: "lower", data: { visible: false } });
-$("bSave").onclick = () => { if (!cfg.title.trim()) return UI.toast("Bitte einen Titel eingeben", true); api({ type: "lowerSave", title: cfg.title, subtitle: cfg.subtitle }).then(() => UI.toast("Gespeichert")); };
+
+// Animation ansehen, Regler zum Durchscrubben
+function playAnim() { cancelAnimationFrame(anim); const tm = LT.timing(view()), T = tm.IN + Math.min(tm.HOLD, 1.5) + tm.OUT, hold = Math.min(tm.HOLD, 1.5), t0 = performance.now(); (function f(t) { const s = (t - t0) / 1000; p = LT.phase(s, { IN: tm.IN, HOLD: hold, OUT: tm.OUT }); $("scrub").value = p; paint(); if (s < T) anim = requestAnimationFrame(f); else { p = 1; $("scrub").value = 1; paint(); } })(t0); }
+const replay = () => playAnim();
+$("bPlay").onclick = playAnim;
+$("scrub").oninput = () => { cancelAnimationFrame(anim); p = Number($("scrub").value); paint(); };
+// Auf der Vorschau ziehen = Versatz
+let drag = null;
+prev.addEventListener("pointerdown", (e) => { if (!cfg) return; drag = { x: e.clientX, y: e.clientY, ox: cfg.design.ox, oy: cfg.design.oy }; prev.setPointerCapture(e.pointerId); prev.classList.add("drag"); });
+prev.addEventListener("pointermove", (e) => { if (!drag) return; const r = prev.getBoundingClientRect(); setD({ ox: drag.ox + (e.clientX - drag.x) / r.width, oy: drag.oy + (e.clientY - drag.y) / r.height }); p = 1; paint(); });
+const endDrag = () => { if (drag) { drag = null; prev.classList.remove("drag"); if (tab === "layout") pane(); } };
+prev.addEventListener("pointerup", endDrag); prev.addEventListener("pointercancel", endDrag);
+
+const payload = () => ({ title: cfg.title, subtitle: cfg.subtitle, pos: cfg.pos, key: cfg.key, accent: cfg.design.accent, design: cfg.design });
+$("bLive").onclick = () => apiq({ type: "lower", data: { ...payload(), visible: true } });
+$("bHide").onclick = () => apiq({ type: "lower", data: { visible: false } });
 $("bShare").onclick = () => UI.share("lower", {});
+$("bSave").onclick = () => { if (!cfg.title.trim()) return UI.toast("Bitte einen Titel eingeben", true); apiq({ type: "lowerSave", title: cfg.title, subtitle: cfg.subtitle }).then(() => UI.toast("Gespeichert")); };
+$("bBulk").onclick = async () => {
+  const lines = $("bulk").value.split("\n").map((l) => l.trim()).filter(Boolean); if (!lines.length) return;
+  let n = 0; for (const l of lines) { const [t, ...r] = l.split(/\s*[;\t]\s*|\s+[–-]\s+/); try { await CL.api({ type: "lowerSave", title: t, subtitle: r.join(" ") }); n++; } catch (e) { UI.toast(e.message, true); break; } }
+  $("bulk").value = ""; UI.toast(I18N.t("{n} angelegt", { n }));
+};
+$("bDesign").onclick = () => {
+  const name = $("dName").value.trim() || (CL.state.lowerDesigns.find((d) => d.id === curDesign)?.name || ""); if (!name) return UI.toast("Bitte einen Namen eingeben", true);
+  const id = CL.state.lowerDesigns.find((d) => d.id === curDesign && d.name === name)?.id;
+  apiq({ type: "designSave", id, name, params: cfg.design }).then(() => { UI.toast("Design gespeichert"); $("dName").value = ""; });
+};
+$("designs").onclick = (e) => {
+  const b = e.target.closest("[data-a]"); if (!b) return; const id = b.closest("[data-id]").dataset.id, d = CL.state.lowerDesigns.find((x) => x.id === id); if (!d) return;
+  if (b.dataset.a === "load") { cfg.design = CLS.cleanDesign(d.params); curDesign = id; $("dName").value = d.name; pane(); paint(); }
+  else if (b.dataset.a === "upd") apiq({ type: "designSave", id, name: d.name, params: cfg.design }).then(() => UI.toast("Design aktualisiert"));
+  else if (b.dataset.a === "del") apiq({ type: "designDelete", id });
+};
+// Liste: Ein, Bearbeiten, Löschen, Design zuweisen, Umsortieren
 $("list").onclick = (e) => {
   const b = e.target.closest("[data-a]"); if (!b) return; const id = b.closest("[data-id]").dataset.id, q = CL.state.lowers.find((x) => x.id === id); if (!q) return;
-  if (b.dataset.a === "edit") { cfg.title = q.title; cfg.subtitle = q.subtitle; $("fTitle").value = q.title; $("fSub").value = q.subtitle; thumbs(); paint(); }
-  else if (b.dataset.a === "live") api({ type: "lower", data: { ...liveCfg(), title: q.title, subtitle: q.subtitle, visible: true } });
-  else if (b.dataset.a === "del") api({ type: "lowerDelete", id });
+  if (b.dataset.a === "edit") { cfg.title = q.title; cfg.subtitle = q.subtitle; const dz = q.designId && CL.state.lowerDesigns.find((d) => d.id === q.designId); if (dz) { cfg.design = CLS.cleanDesign(dz.params); curDesign = dz.id; } if (tab === "text") pane(); paint(); }
+  else if (b.dataset.a === "live") apiq({ type: "lower", data: { id, pos: cfg.pos, key: cfg.key, ...(q.designId ? {} : { design: cfg.design }), visible: true } });
+  else if (b.dataset.a === "del") apiq({ type: "lowerDelete", id });
 };
+$("list").onchange = (e) => { const s = e.target.closest("select[data-a=design]"); if (s) apiq({ type: "lowerSave", id: s.closest("[data-id]").dataset.id, designId: s.value }); };
+let dragId = "";
+$("list").addEventListener("dragstart", (e) => { const r = e.target.closest(".lowrow"); if (r) { dragId = r.dataset.id; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", dragId); } });
+$("list").addEventListener("dragover", (e) => { const r = e.target.closest(".lowrow"); if (r && dragId) { e.preventDefault(); $("list").querySelectorAll(".over").forEach((x) => x.classList.remove("over")); r.classList.add("over"); } });
+$("list").addEventListener("drop", (e) => { const r = e.target.closest(".lowrow"); if (!r || !dragId) return; e.preventDefault(); const to = CL.state.lowers.findIndex((x) => x.id === r.dataset.id); apiq({ type: "lowerMove", id: dragId, to }); dragId = ""; });
+$("list").addEventListener("dragend", () => { dragId = ""; $("list").querySelectorAll(".over").forEach((x) => x.classList.remove("over")); });
+
 async function exportWith(kind) {
   const [w, h] = $("res").value.split("x").map(Number), btn = $(kind === "png" ? "bPng" : "bWebm"), label = btn.textContent;
   btn.disabled = true; $("expMsg").textContent = "Wird erzeugt …";
   try {
-    const r = kind === "png" ? await LT.exportPNG(cfg, { w, h }) : await LT.exportWebM(cfg, { w, h, onProgress: (x) => (btn.textContent = `Aufnahme ${Math.round(x * 100)} %`) });
+    const o = view(), r = kind === "png" ? await LT.exportPNG(o, { w, h }) : await LT.exportWebM(o, { w, h, onProgress: (x) => (btn.textContent = `Aufnahme ${Math.round(x * 100)} %`) });
     $("expMsg").textContent = `${r.name}: ${r.w} × ${r.h}, ${(r.bytes / 1048576).toFixed(1)} MB`; UI.toast("Export fertig");
   } catch (e) { $("expMsg").textContent = e.message; UI.toast(e.message, true); } finally { btn.disabled = false; btn.textContent = label; }
 }
 $("bPng").onclick = () => exportWith("png"); $("bWebm").onclick = () => exportWith("webm");
 window.addEventListener("resize", paint); document.fonts?.ready.then(() => { if (cfg) { thumbs(); paint(); } });
 
-let sig = "";
+let sig = "", dsig = "";
 CL.run((s) => {
-  if (!cfg) { cfg = { title: s.lower.title, subtitle: s.lower.subtitle, style: s.lower.style, pos: s.lower.pos, accent: s.lower.accent, key: s.lower.key }; $("fTitle").value = cfg.title; $("fSub").value = cfg.subtitle; controls(); }
+  if (!cfg) {
+    const l = s.lower; cfg = { title: l.title, subtitle: l.subtitle, pos: l.pos, key: l.key, design: CLS.cleanDesign(l.design || LT.presetDesign(l.style in { balken: 1, glas: 1, linie: 1, karte: 1, block: 1, streifen: 1 } ? l.style : "balken", { accent: l.accent })) };
+    $("pbg").querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", x.dataset.v === pbg)); keys(); pane(); paint();
+  }
   const l = s.lower; $("liveBadge").className = "badge" + (l.visible ? " live" : ""); $("liveBadge").textContent = l.visible ? `live: ${l.title || "–"}` : "nicht live";
   $("bLive").textContent = l.visible ? "Live aktualisieren" : "Einblenden (live)";
-  const html = s.lowers.map((q) => `<div class="lowrow" data-id="${E(q.id)}"><div class="nm" translate="no"><div>${E(q.title)}</div><div class="hint">${E(q.subtitle)}</div></div><button class="sm go" data-a="live">Ein</button><button class="sm" data-a="edit" title="In den Editor laden">✎</button><button class="sm stop" data-a="del">✕</button></div>`).join("") || '<p class="hint">Noch keine gespeichert.</p>';
+  const dd = JSON.stringify(s.lowerDesigns); if (dd !== dsig) { dsig = dd; thumbs(); sig = ""; }
+  const opts = (sel) => `<option value="">Aktuelles Design</option>` + s.lowerDesigns.map((d) => `<option value="${E(d.id)}"${d.id === sel ? " selected" : ""}>${E(d.name)}</option>`).join("");
+  const html = s.lowers.map((q) => `<div class="lowrow" draggable="true" data-id="${E(q.id)}"><span class="grip" title="Ziehen zum Sortieren">⋮⋮</span><div class="nm" translate="no"><div>${E(q.title)}</div><div class="hint">${E(q.subtitle)}</div></div>${s.lowerDesigns.length ? `<select data-a="design" aria-label="Design">${opts(q.designId)}</select>` : ""}<button class="sm go" data-a="live">Ein</button><button class="sm" data-a="edit" title="In den Editor laden">✎</button><button class="sm stop" data-a="del">✕</button></div>`).join("") || '<p class="hint">Noch keine gespeichert.</p>';
   if (html !== sig) { sig = html; $("list").innerHTML = html; }
 });
 </script></body></html>
