@@ -9,7 +9,7 @@
   "bugs": "https://github.com/Broenzlemeister/tallycall/issues",
   "maintainers": [{ "name": "Tallycall" }],
   "legacyIds": [],
-  "runtime": { "type": "node18", "api": "nodejs-ipc", "apiVersion": "1.11.0", "entrypoint": "../main.js" },
+  "runtime": { "type": "node18", "api": "nodejs-ipc", "apiVersion": "1.14.1", "entrypoint": "../main.js" },
   "manufacturer": "Tallycall",
   "products": ["Tallycall"],
   "keywords": ["show control", "rundown", "timer", "cue", "tally"]

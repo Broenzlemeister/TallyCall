@@ -58,11 +58,6 @@ const PORT = 4097, U = `http://localhost:${PORT}`, DATA = "/tmp/sw-collect-" + D
     await i.click("#tAdd"); await i.waitForTimeout(400); await grab(i); await i.close();
     const ed = await open(`/p/${pid}/editor`, 900); await ed.locator(".rd .r").nth(1).click(); await ed.waitForTimeout(400); await ed.click('#insp [data-a="actadd"]').catch(() => {}); await ed.waitForTimeout(400); await ed.click('#insp [data-a="cueact"]').catch(() => {}); await ed.waitForTimeout(400); await grab(ed); await ed.close();
   });
-  await step("admin", async () => {
-    const a = await open("/admin", 1000); await grab(a);
-    for (const t of ["k", "p", "c"]) { await a.click(`[data-tab="${t}"]`); await a.waitForTimeout(200); await grab(a); }
-    await a.click('[data-tab="u"]'); await a.click('[data-a="plan"]'); await a.waitForTimeout(300); await grab(a); await a.close();
-  });
   await step("grafik", async () => { const g = await open(`/p/${pid}/grafik`, 1000); await grab(g); await g.click("#bSave"); await g.waitForTimeout(300); await grab(g); await g.fill("#fTitle", "Test"); await g.click("#bSave"); await g.waitForTimeout(400); await g.click("#bPng").catch(() => {}); await g.waitForTimeout(1500); await grab(g); await g.click("#bShare"); await g.waitForTimeout(500); await grab(g); await g.close(); });
   await step("settings", async () => {
     const s = await open(`/p/${pid}/settings`, 1000); await grab(s);

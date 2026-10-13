@@ -16,7 +16,10 @@ Ablaufregie für Shows, Konferenzen und Live-Events im Browser. Tallycall plant 
 - **Sprachen**: Deutsch, English, Español, Français, Italiano, Português, 中文, 日本語. Die Sprache folgt dem Browser und lässt sich in der App, auf Website und Login umstellen. Freigabe-Links tragen die Sprache mit (`?lang=`).
 - **Trigger**: bei Ereignissen (Start, Ende, Cue fällig, Nachricht, Bauchbinde, Bereit …) Nachrichten an **HTTP, OSC, TCP, UDP**-Ziele senden, z. B. Pixera, QLab, grandMA, Resolume, Companion. Regeln für alle Punkte sowie Trigger direkt an Punkten und Cues. Sendeprotokoll. Siehe [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md).
 - **Steuerung von außen**: API-Schlüssel je Projekt, Kommandos per URL (`/api/p/<id>/cmd/next?token=…`), Status und Live-Strom, **Companion-Modul** für Stream Deck (`integrations/companion`), OSC-Eingang für lokale Server.
-- **Server-Verwaltung** (`/admin`, erstes Konto oder `ADMIN_EMAIL`): Nutzer, Pläne (Free/Pro), Käufe, Projekte, Konfiguration. Pro per Stripe Payment Link + Webhook oder manuell.
+- **Server-Verwaltung** (`/admin`, nur die Adresse aus `ADMIN_EMAIL`): Nutzer, Pläne (Free/Pro), Käufe, alle Projekte, Preis und Zahlungslink, OSC-Port, **Impressum und Datenschutz** (Vorlagen aus deinen Angaben, de/en) und Konfiguration. Jeder Nutzer sieht nur eigene und geteilte Projekte, der Server-Admin sieht alle. Pro (7,99 € pro Monat) per Stripe-Abo und Webhook oder manuell.
+- **OSC komplett**: Eingang `/tallycall/<API-Schlüssel>/<befehl>`, Ausgang mit Vorlagen für QLab, Resolume, grandMA3, Eos, Reaper, TouchOSC-Feedback, Pixera, Companion, vMix. Anleitung: [`docs/OSC.md`](docs/OSC.md) (auch unter `/docs/osc`).
+- **Mehr**: Projektvorlagen (Konferenz, Konzert), Ist-Zeiten-Bericht und CSV-Export, Countdown bis zum Beginn auf der Bühnen-Ansicht.
+- **Companion-Modul** zum Download auf der Website (`/downloads/companion-module-tallycall.tgz`): Verbindungscode, Konto-Login oder lokaler Server, Presets entstehen automatisch aus dem Projekt (jede neue Bauchbinde wird ein neues Preset).
 - Druckansicht pro Tag und Gewerk, Import/Export des Plans als JSON.
 
 ## Lokaler Betrieb
@@ -46,9 +49,9 @@ Eine Schritt-für-Schritt-Anleitung für ein eigenes VPS mit automatischem Deplo
 | `SESSION_SECRET` | Schlüssel für Sitzungen | wird in `DATA_DIR` erzeugt |
 | `TALLYCALL_TRIGGERS` | `public` nur öffentliche Ziele, `all` auch LAN, `off` aus | `public` mit Konten, sonst `all` |
 | `OSC_PORT` | UDP-Port für den OSC-Eingang, leer = aus | aus |
-| `ADMIN_EMAIL` | Server-Admins (Komma-getrennt); das erste Konto ist immer Admin | – |
+| `ADMIN_EMAIL` | Die einzigen Server-Admins (Komma-getrennt). **Setzen!** Ohne die Variable wird das erste registrierte Konto Admin | – |
 | `TALLYCALL_PLANS` | `on` Free/Pro mit Grenzen (1 Projekt, 2 Tage, 3 Links, keine Trigger), `off` alles frei | `on` mit Konten |
-| `PAY_LINK`, `PLAN_MONTHS`, `STRIPE_WEBHOOK_SECRET` | Bezahlung für Pro (Stripe Payment Link, Laufzeit, Webhook-Signatur) | – / 12 / – |
+| `PAY_LINK`, `PLAN_MONTHS`, `STRIPE_WEBHOOK_SECRET` | Bezahlung für Pro (Stripe Payment Link, Monate je Zahlung, Webhook-Signatur `invoice.paid`). Link, Preis und OSC-Port lassen sich auch unter Verwaltung → Einstellungen setzen | – / 1 / – |
 
 ## Sicherheit
 - Passwörter werden mit scrypt gehasht, Sitzungen sind signierte Cookies (HttpOnly, SameSite=Lax, Secure hinter HTTPS). Nach 10 Fehlversuchen wird eine Minute gesperrt. Schreibende Anfragen brauchen einen eigenen Header gegen fremde Seiten (CSRF).
@@ -63,10 +66,10 @@ Eine Schritt-für-Schritt-Anleitung für ein eigenes VPS mit automatischem Deplo
 Die deutschen Texte sind der Schlüssel. Neue Texte in `tools/i18n/*.js` als Zeile `[de, en, es, fr, it, pt, zh, ja]` ergänzen, dann `node tools/i18n-build.js` ausführen. `node tools/i18n-check.js` prüft, dass alle Sprachen vollständig sind und Platzhalter wie `{n}` übereinstimmen. `node tools/i18n-collect.js` fährt die App ab und listet Texte, die noch fehlen.
 
 ## Tests
-`npm test` prüft die Übersetzungen und startet einen Rauchtest (Konten, Rollen, Freigaben, Seiten, Verschachtelung, API-Schlüssel, Trigger-Schutz, Verwaltung, Lizenzen). In GitHub läuft das bei jedem Push.
+`npm test` prüft die Übersetzungen, das Companion-Modul (gegen echte Server mit einer Attrappe der Companion-API) und startet einen Rauchtest (Konten, Rollen, Freigaben, Seiten, Verschachtelung, API-Schlüssel, Trigger-Schutz, Verwaltung, Lizenzen). In GitHub läuft das bei jedem Push.
 
 ## Umbenennen
 `node tools/rename.js "NeuerName"` ersetzt den Namen überall (Texte in allen Sprachen, Umgebungsvariablen, Docker, Doku), baut die Sprachdateien neu und prüft sie. Mit `--folder` wird auch der Projektordner umbenannt.
 
 ## Noch nicht enthalten
-Mehrere Rollen unterhalb von Editor (z. B. nur Steuern), E-Mail-Versand für Einladungen und Passwort-Reset. Das Companion-Modul ist gegen die Modul-API geschrieben, aber noch nicht in einer Companion-Installation getestet.
+Mehrere Rollen unterhalb von Editor (z. B. nur Steuern), E-Mail-Versand für Einladungen und Passwort-Reset, AGB und Widerrufsbelehrung. Das Companion-Modul ist mit einer Attrappe der Companion-API getestet, aber noch nicht in einer echten Companion-Installation. Die Rechtstexte sind Vorlagen und keine Rechtsberatung.

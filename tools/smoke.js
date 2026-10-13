@@ -13,7 +13,7 @@ async function req(method, p, body, cookie, headers = {}) {
   return { status: r.status, json, text, cookie: sc ? sc.split(";")[0] : null };
 }
 (async () => {
-  const srv = spawn("node", ["server.js"], { cwd: path.join(__dirname, ".."), env: { ...process.env, PORT, DATA_DIR: DATA, TALLYCALL_AUTH: "on", ALLOW_SIGNUP: "1" }, stdio: "ignore" });
+  const srv = spawn("node", ["server.js"], { cwd: path.join(__dirname, ".."), env: { ...process.env, PORT, DATA_DIR: DATA, TALLYCALL_AUTH: "on", ALLOW_SIGNUP: "1", OSC_PORT: String(PORT + 1000), STRIPE_WEBHOOK_SECRET: "whsec_smoke" }, stdio: "ignore" });
   try {
     for (let i = 0; i < 50; i++) { try { if ((await req("GET", "/api/health")).status === 200) break; } catch (_) {} await new Promise((r) => setTimeout(r, 100)); }
     ok((await req("GET", "/api/health")).json?.ok === true, "Server startet, /api/health antwortet");
@@ -66,6 +66,36 @@ async function req(method, p, body, cookie, headers = {}) {
     const ov = (await req("GET", "/api/admin/overview", null, c)).json; ok(ov.stats.users === 2 && ov.users.length === 2, "Verwaltung zeigt Nutzer");
     ok((await req("POST", "/api/admin/plan", { userId: meB.user.id, plan: "pro", months: 12 }, c)).json.user.plan === "pro" && (await req("GET", "/api/me", null, b.cookie)).json.user.plan === "pro", "Admin schaltet Pro frei");
     ok((await req("GET", "/api/admin/overview", null, c)).json.purchases.length === 1, "Freischaltung erscheint unter Käufe");
+    // Rechtstexte, Einstellungen, Zahlung, OSC, Exporte, Doku
+    const imp0 = await req("GET", "/impressum"); ok(imp0.status === 200 && /Impressum|Legal notice/.test(imp0.text), "Impressum ist öffentlich erreichbar");
+    ok((await req("GET", "/datenschutz?lang=de")).text.includes("Datenschutzerklärung"), "Datenschutzerklärung ist öffentlich erreichbar");
+    ok((await req("POST", "/api/admin/legal", { legal: { name: "Max <Muster>", street: "Weg 1", zip: "12345", city: "Stadt", email: "m@x.de" } }, b.cookie)).status === 403, "Rechtliches ändern nur als Server-Admin");
+    const lg = await req("POST", "/api/admin/legal", { legal: { name: "Max <Muster>", street: "Weg 1", zip: "12345", city: "Stadt", email: "m@x.de", logDays: 5 } }, c); ok(lg.status === 200 && lg.json.legalMissing.length === 0, "Rechtliches speichern, Pflichtangaben vollständig");
+    const imp = await req("GET", "/impressum"); ok(imp.text.includes("Max &lt;Muster&gt;") && !imp.text.includes("<Muster>") && imp.text.includes("Weg 1"), "Impressum zeigt die Angaben, HTML ist maskiert");
+    ok((await req("GET", "/datenschutz?lang=de")).text.includes("5 Tagen"), "Datenschutz übernimmt die Log-Dauer");
+    ok((await req("POST", "/api/admin/settings", { priceAmount: "9,99", priceNote: "inkl. MwSt.", payLink: "https://buy.stripe.com/test" }, c)).status === 200 && (await req("GET", "/api/config")).json.price.amount === "9,99", "Preis und Zahlungslink speichern, Konfiguration liefert den Preis");
+    ok((await req("POST", "/api/admin/settings", { payLink: "http://evil" }, c)).status === 400, "Zahlungslink muss https sein");
+    ok((await req("POST", "/api/admin/settings", { priceAmount: "7,99" }, c)).status === 200, "Preis zurück auf 7,99");
+    const crypto = require("crypto"), sendHook = async (ev) => { const body = JSON.stringify(ev), ts = Math.floor(Date.now() / 1000); return fetch(U + "/api/stripe/webhook", { method: "POST", headers: { "stripe-signature": `t=${ts},v1=` + crypto.createHmac("sha256", "whsec_smoke").update(ts + "." + body).digest("hex") }, body }); };
+    const invoice = { id: "evt_a", type: "invoice.paid", data: { object: { id: "in_1", customer_email: "c@t.de", amount_paid: 799, currency: "eur" } } };
+    const cc = await req("POST", "/api/signup", { email: "c@t.de", name: "Cleo", password: "geheim1234" });
+    ok((await sendHook(invoice)).status === 200 && (await req("GET", "/api/me", null, cc.cookie)).json.user.plan === "pro", "Stripe invoice.paid schaltet Pro frei");
+    await sendHook(invoice); ok((await req("GET", "/api/admin/overview", null, c)).json.purchases.filter((x) => x.ref === "in_1").length === 1, "Doppelte Zahlungsmeldung wird nicht doppelt gebucht");
+    ok((await fetch(U + "/api/stripe/webhook", { method: "POST", headers: { "stripe-signature": "t=1,v1=00" }, body: "{}" })).status === 400, "Stripe-Webhook mit falscher Signatur wird abgelehnt");
+    // OSC mit Schlüssel
+    const dgram = require("dgram"), osc = (addr) => new Promise((r) => { const b = Buffer.concat([Buffer.from(addr + "\0".repeat(4 - (addr.length % 4))), Buffer.from(",\0\0\0")]); const u = dgram.createSocket("udp4"); u.send(b, PORT + 1000, "127.0.0.1", () => { u.close(); setTimeout(r, 400); }); });
+    const pc = (await req("POST", "/api/projects", { name: "OSC-Show", template: "concert" }, cc.cookie)).json.id, tkc = (await req("POST", `/api/p/${pc}/admin`, { type: "tokenCreate", name: "OSC" }, cc.cookie)).json.token;
+    await osc(`/tallycall/${tkc}/start`); ok((await req("GET", `/api/p/${pc}/state`, null, cc.cookie)).json.runtime.status === "running", "OSC-Befehl mit Schlüssel startet die Show");
+    await osc(`/tallycall/tc_falsch/pause`); ok((await req("GET", `/api/p/${pc}/state`, null, cc.cookie)).json.runtime.status === "running", "OSC mit falschem Schlüssel wird ignoriert");
+    await osc(`/tallycall/${pc}/pause`); ok((await req("GET", `/api/p/${pc}/state`, null, cc.cookie)).json.runtime.status === "running", "OSC mit Projekt-ID statt Schlüssel wird online ignoriert");
+    await osc(`/tallycall/${tkc}/pause`); ok((await req("GET", `/api/p/${pc}/state`, null, cc.cookie)).json.runtime.status === "paused", "OSC pause mit Schlüssel");
+    const csv = await fetch(`${U}/api/p/${pc}/export.csv?kind=plan`, { headers: { cookie: cc.cookie } }); const ct = await csv.text(); ok(csv.status === 200 && ct.includes("Hauptact") && ct.startsWith("Tag;"), "Plan-CSV exportieren");
+    const act = await (await fetch(`${U}/api/p/${pc}/export.csv?kind=actual`, { headers: { cookie: cc.cookie } })).text(); ok(act.includes("Linecheck und Soundcheck"), "Ist-Zeiten-CSV enthält den gestarteten Punkt");
+    ok((await req("GET", "/docs/osc")).text.includes("OSC mit Tallycall einrichten"), "OSC-Anleitung wird als Seite ausgeliefert");
+    ok((await fetch(U + "/downloads/companion-module-tallycall.tgz")).status === 200, "Companion-Modul ist herunterladbar");
+    ok((await req("GET", "/")).text.includes("7,99") && (await req("GET", "/")).text.includes("companion-module-tallycall.tgz"), "Landingpage zeigt Preis und Companion-Download");
+    ok((await req("GET", "/api/p/" + pc + "/state", null, b.cookie)).status === 404, "Fremde Nutzer sehen das Projekt nicht");
+    ok((await req("GET", "/api/me", null, c)).json.others.some((x) => x.id === pc), "Server-Admin sieht fremde Projekte unter „Alle Projekte“");
     ok((await req("GET", "/admin", null, c)).status === 200 && (await req("GET", "/admin", null, b.cookie)).status === 403, "Verwaltungsseite nur für Admins");
   } catch (e) { console.error(e); failed++; }
   srv.kill(); fs.rmSync(DATA, { recursive: true, force: true });

@@ -4,9 +4,9 @@
 # Was passiert: Docker, Firewall (22/80/443), automatische Sicherheitsupdates, fail2ban, Deploy-Benutzer mit nur dem
 # übergebenen SSH-Schlüssel, Ordner /opt/tallycall mit .env, tägliches Backup per Cron.
 set -euo pipefail
-DOMAIN=""; KEY=""; USER_NAME="deploy"; APP_DIR="/opt/tallycall"; REPO="Broenzlemeister/tallycall"
+DOMAIN=""; KEY=""; USER_NAME="deploy"; APP_DIR="/opt/tallycall"; REPO="Broenzlemeister/tallycall"; ADMIN_EMAIL=""
 while [ $# -gt 0 ]; do case "$1" in
-  --domain) DOMAIN="$2"; shift 2;; --key) KEY="$2"; shift 2;; --user) USER_NAME="$2"; shift 2;; --dir) APP_DIR="$2"; shift 2;; --repo) REPO="$2"; shift 2;;
+  --domain) DOMAIN="$2"; shift 2;; --key) KEY="$2"; shift 2;; --user) USER_NAME="$2"; shift 2;; --dir) APP_DIR="$2"; shift 2;; --repo) REPO="$2"; shift 2;; --admin-email) ADMIN_EMAIL="$2"; shift 2;;
   *) echo "Unbekannte Option $1"; exit 1;; esac; done
 [ "$(id -u)" = 0 ] || { echo "Bitte als root ausführen."; exit 1; }
 [ -n "$DOMAIN" ] || { echo "Bitte --domain angeben (die Domain muss per A-Record auf diesen Server zeigen)."; exit 1; }
@@ -69,6 +69,8 @@ DOMAIN=$DOMAIN
 PUBLIC_URL=https://$DOMAIN
 # Nach dem Anlegen der ersten Konten auf 0 setzen, dann nur noch per Einladung:
 ALLOW_SIGNUP=1
+# Nur diese Adresse ist Server-Admin (Verwaltung, alle Projekte, Käufe)
+ADMIN_EMAIL=$ADMIN_EMAIL
 TZ_SHOW=Europe/Berlin
 SESSION_SECRET=$(head -c 48 /dev/urandom | base64 | tr -d '\n/+=')
 ENV

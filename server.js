@@ -9,21 +9,24 @@ const Engine = require("./lib/engine.js");
 const CLS = require("./public/shared.js");
 const auth = require("./lib/auth.js");
 const Trig = require("./lib/triggers.js");
+const Legal = require("./lib/legal.js");
+const Md = require("./lib/md.js");
 
 const PORT = Number(process.env.PORT) || 4001;
 const HOST = process.env.HOST || "0.0.0.0";
 const DATA = path.resolve(process.env.DATA_DIR || path.join(__dirname, "data"));
 const AUTH_ON = (process.env.TALLYCALL_AUTH || "on") !== "off"; // "off" = lokaler Betrieb ohne Login
-const SIGNUP = process.env.ALLOW_SIGNUP !== "0";
+const SIGNUP_ENV = process.env.ALLOW_SIGNUP !== "0";
 const TZ_DEFAULT = process.env.TZ_SHOW || "Europe/Berlin";
 const PUBLIC_URL = (process.env.PUBLIC_URL || "").replace(/\/$/, "");
 // Trigger-Politik: all (jede Adresse, lokaler Betrieb) | public (nur öffentliche Adressen, online) | off
 const TRIGGERS = process.env.TALLYCALL_TRIGGERS || (AUTH_ON ? "public" : "all");
-const OSC_PORT = Number(process.env.OSC_PORT) || 0; // OSC-Eingang, 0 = aus
+const OSC_ENV = Number(process.env.OSC_PORT) || 0; // OSC-Eingang, 0 = aus (änderbar unter Verwaltung → Server)
 // Lizenzen: on = Free/Pro mit Grenzen, off = alles frei. Server-Admins haben immer Pro.
 const PLANS = (process.env.TALLYCALL_PLANS || (AUTH_ON ? "on" : "off")) === "on";
-const PAY_LINK = process.env.PAY_LINK || ""; // z. B. Stripe Payment Link
-const PLAN_MONTHS = Number(process.env.PLAN_MONTHS) || 12;
+const PAY_LINK_ENV = process.env.PAY_LINK || ""; // z. B. Stripe Payment Link (änderbar unter Verwaltung → Server)
+const PLAN_MONTHS = Number(process.env.PLAN_MONTHS) || 1; // Laufzeit je Zahlung (Monatsabo)
+const PLAN_GRACE = 3 * 86400000; // Nachfrist nach Ablauf, bis die Verlängerung eintrifft
 const STRIPE_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
 const ADMIN_EMAILS = String(process.env.ADMIN_EMAIL || "").toLowerCase().split(/[\s,]+/).filter(Boolean);
 const LIMITS = { free: { projects: 1, days: 2, shares: 3, integrations: false, tokens: false }, pro: { projects: Infinity, days: Infinity, shares: Infinity, integrations: true, tokens: true } };
@@ -31,6 +34,16 @@ const PUB = path.join(__dirname, "public");
 const VIEWS_DIR = path.join(__dirname, "views");
 const store = require("./lib/store.js").open(DATA);
 const SECRET = auth.loadSecret(DATA);
+
+// Server-Einstellungen, die der Admin im Browser ändert (data/site.json): Rechtstexte, Preis, Zahlungslink, OSC-Port, Registrierung
+const site = (() => {
+  const d = { legal: Legal.DEFAULTS(), payLink: "", price: { amount: "7,99", currency: "EUR" }, oscPort: null, signup: null }, s = store.loadSite() || {};
+  return { ...d, ...s, legal: { ...d.legal, ...(s.legal || {}) }, price: { ...d.price, ...(s.price || {}) } };
+})();
+const saveSite = () => store.saveSite(site);
+const payLink = () => site.payLink || PAY_LINK_ENV;
+const signupOpen = () => (site.signup == null ? SIGNUP_ENV : !!site.signup);
+const oscPortNow = () => (site.oscPort != null && site.oscPort !== "" ? Number(site.oscPort) || 0 : OSC_ENV);
 
 // Ansichten: Mitglieder-Seiten und Seiten, die per Link geteilt werden dürfen
 const MEMBER_VIEWS = new Set(["regie", "editor", "grafik", "settings", "integrations"]);
@@ -44,8 +57,7 @@ const LOCAL_USER = { id: "local", name: "Lokal", email: "", local: true, siteAdm
 const users = store.loadUsers();
 const purchases = store.loadPurchases();
 // Bestehende Installationen: Konten aus ADMIN_EMAIL werden Admin; gibt es keinen Admin, wird das älteste Konto Admin
-for (const u of users) if (ADMIN_EMAILS.includes(u.email)) u.siteAdmin = true;
-if (users.length && !users.some((u) => u.siteAdmin)) { users.slice().sort((x, y) => x.created - y.created)[0].siteAdmin = true; store.saveUsers(users); }
+if (!ADMIN_EMAILS.length && users.length && !users.some((u) => u.siteAdmin)) { users.slice().sort((x, y) => x.created - y.created)[0].siteAdmin = true; store.saveUsers(users); }
 const userById = (id) => users.find((u) => u.id === id);
 const userByEmail = (e) => users.find((u) => u.email === String(e).trim().toLowerCase());
 const hosts = new Map();
@@ -57,8 +69,8 @@ function addHost({ meta, state }) {
 }
 for (const p of store.loadProjects()) addHost(p);
 
-function newProject({ name, timezone, sample, owner }) {
-  const state = Engine.createState({ name, timezone, sample });
+function newProject({ name, timezone, sample, template, owner }) {
+  const state = Engine.createState({ name, timezone, sample, template });
   const meta = { id: auth.id(6), name, created: Date.now(), updated: Date.now(), members: owner && !owner.local ? [{ userId: owner.id, role: "admin" }] : [], invites: [], shares: [], audit: [], tokens: [] };
   const h = addHost({ meta, state });
   store.saveProject(h);
@@ -66,14 +78,20 @@ function newProject({ name, timezone, sample, owner }) {
 }
 if (!AUTH_ON && !hosts.size) newProject({ name: "Beispielshow", timezone: TZ_DEFAULT, sample: true });
 
-const roleIn = (h, user) => (!AUTH_ON ? "admin" : user ? h.meta.members.find((m) => m.userId === user.id)?.role || null : null);
+const isMember = (h, user) => !!user && h.meta.members.some((m) => m.userId === user.id);
+// Der Server-Admin darf jedes Projekt öffnen und verwalten; alle anderen sehen nur ihre eigenen und geteilte Projekte
+const roleIn = (h, user) => (!AUTH_ON ? "admin" : user ? h.meta.members.find((m) => m.userId === user.id)?.role || (isSiteAdmin(user) ? "admin" : null) : null);
 const touch = (h) => { h.meta.updated = Date.now(); store.saveProject(h); };
 
 // ---------- Lizenzen ----------
-const isSiteAdmin = (u) => !!u && (u.siteAdmin || u.local);
-const planOf = (u) => (!PLANS || isSiteAdmin(u) || (u && u.plan === "pro" && (!u.planUntil || u.planUntil > Date.now())) ? "pro" : "free");
+// Mit ADMIN_EMAIL sind nur diese Adressen Server-Admin. Ohne die Variable gilt das Flag am Konto (das erste Konto bekommt es).
+const isSiteAdmin = (u) => !!u && (!!u.local || (ADMIN_EMAILS.length ? ADMIN_EMAILS.includes(String(u.email).toLowerCase()) : !!u.siteAdmin));
+const planOf = (u) => (!PLANS || isSiteAdmin(u) || (u && u.plan === "pro" && (!u.planUntil || u.planUntil + PLAN_GRACE > Date.now())) ? "pro" : "free");
 const limits = (u) => LIMITS[planOf(u)];
-const planInfo = (u) => ({ plan: planOf(u), until: u?.planUntil || 0, enforced: PLANS, payLink: PAY_LINK, limits: { ...limits(u), projects: isFinite(limits(u).projects) ? limits(u).projects : 0, days: isFinite(limits(u).days) ? limits(u).days : 0, shares: isFinite(limits(u).shares) ? limits(u).shares : 0 } });
+const planInfo = (u) => ({ plan: planOf(u), until: u?.planUntil || 0, enforced: PLANS, payLink: payLink(), price: site.price, limits: { ...limits(u), projects: isFinite(limits(u).projects) ? limits(u).projects : 0, days: isFinite(limits(u).days) ? limits(u).days : 0, shares: isFinite(limits(u).shares) ? limits(u).shares : 0 } });
+// Plan-Grenzen gelten nach dem Besitzer des Projekts (erster Admin), nicht nach der Person, die gerade arbeitet
+const ownerOf = (h) => { const m = h.meta.members.find((x) => x.role === "admin"); return m ? userById(m.userId) : null; };
+const limitsOf = (h, fallback) => limits(ownerOf(h) || fallback);
 const ownedProjects = (u) => [...hosts.values()].filter((h) => h.meta.members.some((m) => m.userId === u.id && m.role === "admin")).length;
 function grantPlan(u, months, { source = "manual", ref = "", amount = 0, currency = "", by = "" } = {}) {
   const base = Math.max(Date.now(), u.planUntil || 0);
@@ -106,10 +124,10 @@ function broadcast(h) {
   const full = `data: ${payload(h, false)}\n\n`, shared = `data: ${payload(h, true)}\n\n`;
   for (const c of h.clients) c.res.write(c.share ? shared : full);
   touch(h);
-  try { Trig.evaluate(h, TRIGGERS); } catch (e) { console.error("Trigger:", e.message); }
+  try { if (limitsOf(h, LOCAL_USER).integrations) Trig.evaluate(h, TRIGGERS); } catch (e) { console.error("Trigger:", e.message); }
 }
 setInterval(() => { for (const h of hosts.values()) for (const c of h.clients) c.res.write(": ping\n\n"); }, 15000);
-setInterval(() => { for (const h of hosts.values()) { if (h.engine.tick()) broadcast(h); else try { Trig.evaluate(h, TRIGGERS); } catch (_) {} } }, 500);
+setInterval(() => { for (const h of hosts.values()) { if (h.engine.tick()) broadcast(h); else try { if (limitsOf(h, LOCAL_USER).integrations) Trig.evaluate(h, TRIGGERS); } catch (_) {} } }, 500);
 function sse(req, res, h, share) {
   res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive", "X-Accel-Buffering": "no" });
   res.write(`retry: 2000\ndata: ${payload(h, share)}\n\n`);
@@ -164,7 +182,7 @@ function describe(h, a, pre) {
 }
 
 // ---------- HTTP-Helfer ----------
-const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".woff2": "font/woff2", ".txt": "text/plain; charset=utf-8", ".xml": "application/xml", ".jpg": "image/jpeg", ".webp": "image/webp" };
+const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".woff2": "font/woff2", ".txt": "text/plain; charset=utf-8", ".xml": "application/xml", ".jpg": "image/jpeg", ".webp": "image/webp", ".tgz": "application/gzip", ".zip": "application/zip" };
 const send = (res, code, obj, headers = {}) => { res.writeHead(code, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", ...headers }); res.end(JSON.stringify(obj)); };
 const redirect = (res, to) => { res.writeHead(302, { Location: to }); res.end(); };
 const secureReq = (req) => !!req.socket.encrypted || req.headers["x-forwarded-proto"] === "https";
@@ -182,7 +200,8 @@ function sendFile(res, file, { inject } = {}) {
     if (err) { res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" }); return res.end("Nicht gefunden"); }
     let out = buf;
     if (inject) out = Buffer.from(buf.toString().replace("<head>", "<head>" + inject));
-    res.writeHead(200, { "Content-Type": MIME[path.extname(file)] || "application/octet-stream", "Cache-Control": "no-cache" });
+    const ext = path.extname(file), dl = ext === ".tgz" || ext === ".zip" ? { "Content-Disposition": `attachment; filename="${path.basename(file)}"` } : {};
+    res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream", "Cache-Control": "no-cache", ...dl });
     res.end(out);
   });
 }
@@ -213,6 +232,7 @@ function tokenAuth(req, url, h) {
   const m = /^Bearer\s+(\S+)/i.exec(req.headers.authorization || ""), t = m ? m[1] : url.searchParams.get("token");
   if (!t) return null;
   const k = h.meta.tokens.find((x) => x.hash === hashToken(t) && !x.revoked);
+  if (k && !limitsOf(h, LOCAL_USER).tokens) return null;
   if (k) { k.lastUsed = Date.now(); }
   return k || null;
 }
@@ -220,8 +240,11 @@ function tokenAuth(req, url, h) {
 function command(name, q) {
   const v = (k) => q.get(k) ?? "";
   switch (name) {
-    case "start": case "pause": case "toggle": case "stop": case "next": case "prev": case "readyReset": return { type: name, dayId: v("day") || undefined };
+    case "start": return v("id") ? { type: "start", id: v("id") } : { type: "start", dayId: v("day") || undefined };
+    case "pause": case "toggle": case "stop": case "next": case "prev": case "readyReset": return { type: name, dayId: v("day") || undefined };
     case "go": return { type: "next" };
+    case "goto": return { type: "start", id: v("id") };
+    case "messageoff": return { type: "message", text: "", visible: false };
     case "load": return { type: "load", id: v("id") };
     case "add": case "addTime": return { type: "addTime", ms: Number(v("ms")) || Number(v("min")) * 60000 || 60000 };
     case "sub": return { type: "addTime", ms: -(Number(v("ms")) || Number(v("min")) * 60000 || 60000) };
@@ -240,14 +263,15 @@ function status(h) {
   let next = null;
   if (f) { const list = f.day.events.filter((x) => x.type !== "group" && !CLS.effSkip(f.day.events, x)); next = list[list.indexOf(f.e) + 1] || null; }
   const day = f ? f.day : s.days.find((d) => d.id === r.dayId) || s.days[0];
-  return { show: s.show.name, status: e ? r.status : "idle", day: day ? { id: day.id, name: day.name, date: day.date } : null,
+  const items = s.days.flatMap((d) => d.events.filter((x) => x.type !== "group" && !CLS.effSkip(d.events, x)).map((x) => ({ id: x.id, title: x.title, type: x.type, dayId: d.id, day: d.name, color: x.color })));
+  return { show: s.show.name, project: h.meta.id, items, status: e ? r.status : "idle", day: day ? { id: day.id, name: day.name, date: day.date } : null,
     current: e ? { id: e.id, title: e.title, subtitle: e.subtitle, presenter: e.presenter, type: e.type, duration: e.duration, color: e.color } : null,
     next: next ? { id: next.id, title: next.title, type: next.type } : null,
     remaining: Math.round(rem / 1000), remainingText: CLS.fmt(rem), elapsed: Math.round(h.engine.elapsed() / 1000), added: Math.round(r.added / 1000),
     level: !e ? "ok" : rem < 0 ? "over" : rem <= s.settings.warnRed * 1000 ? "danger" : rem <= s.settings.warnYellow * 1000 ? "warn" : "ok",
-    clock: CLS.hhmmss(CLS.nowParts(Date.now(), s.settings.timezone).sec), roll: s.settings.roll, message: s.message, lower: { title: s.lower.title, subtitle: s.lower.subtitle, visible: s.lower.visible },
+    clock: CLS.hhmmss(CLS.nowParts(Date.now(), s.settings.timezone).sec), roll: s.settings.roll, message: s.message,
     ready: Object.fromEntries(s.gewerke.map((g) => [g.id, s.ready[g.id]?.state || ""])), gewerke: s.gewerke.map((g) => ({ id: g.id, name: g.name, short: g.short, color: g.color })),
-    lowers: s.lowers, days: s.days.map((d) => ({ id: d.id, name: d.name, date: d.date })), hasDraft: !!s.draft, serverTime: Date.now() };
+    lowers: s.lowers, lower: { id: s.lowers.find((q) => q.title === s.lower.title && q.subtitle === s.lower.subtitle)?.id || "", title: s.lower.title, subtitle: s.lower.subtitle, visible: s.lower.visible }, days: s.days.map((d) => ({ id: d.id, name: d.name, date: d.date })), hasDraft: !!s.draft, serverTime: Date.now() };
 }
 
 // ---------- API ----------
@@ -257,7 +281,7 @@ async function api(req, res, url, segs, user) {
   if (req.method === "OPTIONS") { res.writeHead(204, { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "Authorization, Content-Type, x-cl", "Access-Control-Allow-Methods": "GET, POST, OPTIONS" }); return res.end(); }
 
   if (a === "health") return send(res, 200, { ok: true });
-  if (a === "config") return send(res, 200, { auth: AUTH_ON, signup: SIGNUP, plans: PLANS, payLink: PAY_LINK });
+  if (a === "config") return send(res, 200, { auth: AUTH_ON, signup: signupOpen(), plans: PLANS, payLink: payLink(), price: site.price });
   if (a === "stripe" && b === "webhook" && post) return stripeWebhook(req, res);
 
   // Projekt-API mit Schlüssel (Companion, Stream Deck): kein Cookie, kein CSRF-Header nötig
@@ -293,7 +317,7 @@ async function api(req, res, url, segs, user) {
   // --- Konto ---
   if (a === "signup" && post) {
     if (!AUTH_ON) return send(res, 400, { error: "Anmeldung ist im lokalen Modus nicht nötig" });
-    if (!SIGNUP) return send(res, 403, { error: "Die Registrierung ist auf diesem Server geschlossen" });
+    if (!signupOpen()) return send(res, 403, { error: "Die Registrierung ist auf diesem Server geschlossen" });
     if (blocked("su:" + ip)) return send(res, 429, { error: "Zu viele Versuche, bitte kurz warten" });
     const d = await readBody(req), email = String(d.email || "").trim().toLowerCase(), name = String(d.name || "").trim().slice(0, 60);
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 120) return send(res, 400, { error: "Bitte eine gültige E-Mail-Adresse eingeben" });
@@ -301,7 +325,7 @@ async function api(req, res, url, segs, user) {
     if (String(d.password || "").length < 8) return send(res, 400, { error: "Das Passwort braucht mindestens 8 Zeichen" });
     if (userByEmail(email)) { fail("su:" + ip); return send(res, 409, { error: "Mit dieser E-Mail gibt es schon ein Konto" }); }
     // Das erste Konto und die in ADMIN_EMAIL genannten Adressen verwalten den Server
-    const u = { id: auth.id(6), email, name, pass: auth.hashPassword(d.password), sv: 0, created: Date.now(), lastLogin: Date.now(), siteAdmin: !users.length || ADMIN_EMAILS.includes(email), plan: "free", planUntil: 0 };
+    const u = { id: auth.id(6), email, name, pass: auth.hashPassword(d.password), sv: 0, created: Date.now(), lastLogin: Date.now(), siteAdmin: !ADMIN_EMAILS.length && !users.length, plan: "free", planUntil: 0 };
     users.push(u); store.saveUsers(users); applyInvites(u); applyPendingPurchases(u);
     return send(res, 200, { user: publicUser(u) }, { "Set-Cookie": auth.cookie("cl", auth.makeSession(SECRET, u), { secure: secureReq(req) }) });
   }
@@ -312,7 +336,6 @@ async function api(req, res, url, segs, user) {
     const u = userByEmail(email);
     if (!u || !auth.verifyPassword(String(d.password || ""), u.pass)) { fail(k); fail("li:" + ip); return send(res, 401, { error: "E-Mail oder Passwort stimmt nicht" }); }
     if (u.disabled) return send(res, 403, { error: "Dieses Konto ist gesperrt" });
-    if (ADMIN_EMAILS.includes(email)) u.siteAdmin = true;
     u.lastLogin = Date.now(); store.saveUsers(users);
     applyInvites(u); applyPendingPurchases(u);
     return send(res, 200, { user: publicUser(u) }, { "Set-Cookie": auth.cookie("cl", auth.makeSession(SECRET, u), { secure: secureReq(req) }) });
@@ -341,8 +364,9 @@ async function api(req, res, url, segs, user) {
   if (!user) return send(res, 401, { error: "Bitte anmelden" });
 
   if (a === "me") {
-    const list = [...hosts.values()].filter((h) => roleIn(h, user)).sort((x, y) => y.meta.updated - x.meta.updated).map((h) => projectSummary(h, user));
-    return send(res, 200, { user: publicUser(user), projects: list, auth: AUTH_ON });
+    const mine = [...hosts.values()].filter((h) => isMember(h, user) || !AUTH_ON).sort((x, y) => y.meta.updated - x.meta.updated).map((h) => projectSummary(h, user));
+    const others = AUTH_ON && isSiteAdmin(user) ? [...hosts.values()].filter((h) => !isMember(h, user)).sort((x, y) => y.meta.updated - x.meta.updated).map((h) => ({ ...projectSummary(h, user), owner: userById(h.meta.members.find((m) => m.role === "admin")?.userId)?.email || "" })) : [];
+    return send(res, 200, { user: publicUser(user), projects: mine, others, auth: AUTH_ON });
   }
   if (a === "account" && post) {
     if (user.local) return send(res, 400, { error: "Im lokalen Modus gibt es kein Konto" });
@@ -364,10 +388,10 @@ async function api(req, res, url, segs, user) {
     if (!user.local && ownedProjects(user) >= limits(user).projects) return send(res, 402, { error: "Im Free-Plan ist ein eigenes Projekt möglich. Für mehr Projekte auf Pro wechseln.", upgrade: true });
     let tz = String(d.timezone || TZ_DEFAULT);
     try { new Intl.DateTimeFormat("de", { timeZone: tz }); } catch (_) { tz = TZ_DEFAULT; }
-    const h = newProject({ name, timezone: tz, sample: !!d.sample, owner: user });
+    const h = newProject({ name, timezone: tz, sample: !!d.sample, template: ["conference", "concert", "empty"].includes(d.template) ? d.template : "", owner: user });
     return send(res, 200, { id: h.meta.id });
   }
-  if (a === "admin") return siteAdminApi(req, res, segs.slice(1), user);
+  if (a === "admin") return siteAdminApi(req, res, segs.slice(1), user, url);
 
   // --- Projekt ---
   if (a === "p") {
@@ -377,20 +401,29 @@ async function api(req, res, url, segs, user) {
     if (c === "state") return send(res, 200, JSON.parse(payload(h, false)));
     if (c === "status") return send(res, 200, status(h));
     if (c === "draft") return send(res, 200, { draft: h.state.draft, rev: h.state.draftRev });
+    if (c === "export.csv") return exportCsv(res, h, url.searchParams.get("kind") === "actual" ? "actual" : "plan");
     if (c === "meta") {
       const admin = role === "admin";
       return send(res, 200, {
-        id: h.meta.id, name: h.meta.name, role, user: publicUser(user), auth: AUTH_ON, triggers: TRIGGERS, oscPort: OSC_PORT, apiBase: `${baseUrl(req)}/api/p/${h.meta.id}`,
+        id: h.meta.id, name: h.meta.name, role, user: publicUser(user), auth: AUTH_ON, triggers: TRIGGERS, oscPort: oscPortNow(), oscOk: oscState.ok, viaAdmin: AUTH_ON && !isMember(h, user), apiBase: `${baseUrl(req)}/api/p/${h.meta.id}`,
         members: h.meta.members.map((m) => { const u = userById(m.userId); return { userId: m.userId, role: m.role, name: u?.name || "?", email: admin ? u?.email : undefined }; }),
         invites: admin ? h.meta.invites : [], shares: h.meta.shares.filter((s) => !s.revoked).map((s) => shareView(req, s)), audit: admin ? h.meta.audit.slice(0, 120) : [],
         tokens: admin ? h.meta.tokens.filter((t) => !t.revoked).map(({ hash, ...t }) => t) : [], trigLog: h.trig?.log || [],
       });
     }
+    if (c === "cmd" && post) { // wie GET /cmd mit Schlüssel, aber mit Konto (Cookie + Schutz-Header): für das Companion-Modul im Konto- oder Lokal-Modus
+      const act = command(d2, url.searchParams);
+      if (!act) return send(res, 404, { error: "Unbekannter Befehl" });
+      try { h.engine.act(act); } catch (e) { return send(res, 400, { error: e.message }); }
+      const text = describe(h, act, { title: act.id ? titleOf(h, act.id) : "" }); if (text) audit(h, user, text);
+      broadcast(h);
+      return send(res, 200, { ok: true, ...status(h) });
+    }
     if (c === "action" && post) {
       const act = await readBody(req);
       const pre = { title: act.id ? titleOf(h, act.id) : "" };
       if (!user.local && PLANS) {
-        const L = limits(user);
+        const L = limitsOf(h, user);
         if (act.type === "dayAdd" && (h.state.draft || h.state).days.length >= L.days) return send(res, 402, { error: `Im Free-Plan sind ${L.days} Tage je Projekt möglich. Für mehr Tage auf Pro wechseln.`, upgrade: true });
         if (/^(target|rule)Add$/.test(act.type) && !L.integrations) return send(res, 402, { error: "Trigger und Integrationen gibt es im Pro-Plan.", upgrade: true });
       }
@@ -468,7 +501,7 @@ function projectAdmin(req, res, h, role, user, d) {
       if (params.g && !h.state.gewerke.some((g) => g.id === params.g)) return send(res, 400, { error: "Unbekanntes Gewerk" });
       let s = m.shares.find((x) => !x.revoked && x.view === d.view && JSON.stringify(x.params) === JSON.stringify(params));
       if (!s) {
-        if (!user.local && m.shares.filter((x) => !x.revoked).length >= limits(user).shares) return send(res, 402, { error: `Im Free-Plan sind ${limits(user).shares} Freigabe-Links möglich. Für mehr auf Pro wechseln.`, upgrade: true });
+        if (!user.local && m.shares.filter((x) => !x.revoked).length >= limitsOf(h, user).shares) return send(res, 402, { error: `Im Free-Plan sind ${limitsOf(h, user).shares} Freigabe-Links möglich. Für mehr auf Pro wechseln.`, upgrade: true });
         s = { id: auth.id(4), token: auth.token(18), view: d.view, params, label: String(d.label || "").slice(0, 60), by: user.name, created: Date.now() };
         m.shares.push(s); audit(h, user, `Freigabe-Link erstellt: ${d.view}${params.g ? " (" + params.g + ")" : ""}`);
       }
@@ -483,7 +516,7 @@ function projectAdmin(req, res, h, role, user, d) {
     }
     case "tokenCreate": {
       if (!admin) return deny();
-      if (!user.local && !limits(user).tokens) return send(res, 402, { error: "API-Schlüssel gibt es im Pro-Plan.", upgrade: true });
+      if (!user.local && !limitsOf(h, user).tokens) return send(res, 402, { error: "API-Schlüssel gibt es im Pro-Plan.", upgrade: true });
       if (m.tokens.filter((t) => !t.revoked).length >= 20) return send(res, 400, { error: "Maximal 20 Schlüssel" });
       const raw = "tc_" + auth.token(24), t = { id: auth.id(4), name: String(d.name || "Companion").slice(0, 40), scope: d.scope === "read" ? "read" : "control", hash: hashToken(raw), prefix: raw.slice(0, 7), by: user.name, created: Date.now(), lastUsed: 0 };
       m.tokens.push(t); audit(h, user, `API-Schlüssel „${t.name}“ erstellt`);
@@ -499,7 +532,7 @@ function projectAdmin(req, res, h, role, user, d) {
       if (!user.local && ownedProjects(user) >= limits(user).projects) return send(res, 402, { error: "Im Free-Plan ist ein eigenes Projekt möglich. Für mehr Projekte auf Pro wechseln.", upgrade: true });
       const copy = newProject({ name: `${m.name} (Kopie)`, timezone: h.state.settings.timezone, sample: false, owner: user });
       const s = JSON.parse(JSON.stringify(h.state));
-      Object.assign(s, { show: { name: copy.meta.name }, runtime: copy.state.runtime, ready: {}, log: [], draft: null, draftRev: 0, message: { text: "", visible: false } });
+      Object.assign(s, { show: { name: copy.meta.name }, runtime: copy.state.runtime, ready: {}, log: [], actuals: {}, draft: null, draftRev: 0, message: { text: "", visible: false } });
       s.runtime = { dayId: s.days[0].id, currentId: null, status: "stopped", startedAt: 0, pausedElapsed: 0, added: 0 };
       s.settings.roll = false;
       copy.state = s; copy.engine = Engine.create(s); store.saveProject(copy);
@@ -517,17 +550,22 @@ function projectAdmin(req, res, h, role, user, d) {
 }
 
 // ---------- Server-Verwaltung (nur Server-Admins): Nutzer, Pläne, Käufe ----------
-async function siteAdminApi(req, res, segs, user) {
+async function siteAdminApi(req, res, segs, user, url) {
   if (!isSiteAdmin(user)) return send(res, 403, { error: "Nur für Server-Admins" });
   const post = req.method === "POST", [a] = segs;
-  const row = (u) => ({ id: u.id, name: u.name, email: u.email, siteAdmin: !!u.siteAdmin, disabled: !!u.disabled, plan: planOf(u), planSet: u.plan || "free", planUntil: u.planUntil || 0, created: u.created, lastLogin: u.lastLogin || 0,
+  const row = (u) => ({ id: u.id, name: u.name, email: u.email, siteAdmin: isSiteAdmin(u), disabled: !!u.disabled, plan: planOf(u), planSet: u.plan || "free", planUntil: u.planUntil || 0, created: u.created, lastLogin: u.lastLogin || 0,
     projects: [...hosts.values()].filter((h) => h.meta.members.some((m) => m.userId === u.id)).length, owned: ownedProjects(u) });
+  if (a === "legal-preview") {
+    const kind = url.searchParams.get("kind") === "impressum" ? "impressum" : "privacy", lang = url.searchParams.get("lang") === "en" ? "en" : "de";
+    return send(res, 200, { html: kind === "impressum" ? Legal.impressum(site.legal, lang) : Legal.privacy(site.legal, lang, { domain: legalDomain(), plans: PLANS }) });
+  }
   if (a === "overview") {
     const now = Date.now(), live = [...hosts.values()].filter((h) => h.state.runtime.status === "running").length;
     const revenue = purchases.reduce((n, p) => n + (Number(p.amount) || 0), 0);
     return send(res, 200, {
-      config: { auth: AUTH_ON, signup: SIGNUP, plans: PLANS, payLink: PAY_LINK, stripe: !!STRIPE_SECRET, triggers: TRIGGERS, oscPort: OSC_PORT, planMonths: PLAN_MONTHS, adminEmails: ADMIN_EMAILS, publicUrl: PUBLIC_URL, dataDir: DATA, version: require("./package.json").version },
-      stats: { users: users.length, pro: users.filter((u) => planOf(u) === "pro" && !isSiteAdmin(u)).length, admins: users.filter((u) => u.siteAdmin).length, projects: hosts.size, live, newWeek: users.filter((u) => now - u.created < 7 * 86400000).length, purchases: purchases.length, revenue, currency: purchases.find((p) => p.currency)?.currency || "" },
+      config: { auth: AUTH_ON, signup: signupOpen(), plans: PLANS, payLink: payLink(), stripe: !!STRIPE_SECRET, triggers: TRIGGERS, oscPort: oscPortNow(), planMonths: PLAN_MONTHS, adminEmails: ADMIN_EMAILS, adminLocked: ADMIN_EMAILS.length > 0, publicUrl: PUBLIC_URL, dataDir: DATA, version: require("./package.json").version },
+      stats: { users: users.length, pro: users.filter((u) => planOf(u) === "pro" && !isSiteAdmin(u)).length, admins: users.filter(isSiteAdmin).length, projects: hosts.size, live, newWeek: users.filter((u) => now - u.created < 7 * 86400000).length, purchases: purchases.length, revenue, currency: purchases.find((p) => p.currency)?.currency || "" },
+      site: { legal: site.legal, price: site.price, payLink: site.payLink || "", payLinkEnv: !!PAY_LINK_ENV, oscPort: site.oscPort ?? "", oscEnv: OSC_ENV, osc: oscState, signup: signupOpen(), signupEnv: SIGNUP_ENV, legalMissing: Legal.missing(site.legal) },
       users: users.map(row).sort((x, y) => y.created - x.created),
       purchases: purchases.slice(0, 300),
       projects: [...hosts.values()].map((h) => ({ id: h.meta.id, name: h.meta.name, members: h.meta.members.length, owner: userById(h.meta.members.find((m) => m.role === "admin")?.userId)?.email || "", days: h.state.days.length, updated: h.meta.updated, status: h.state.runtime.status })).sort((x, y) => y.updated - x.updated),
@@ -535,6 +573,22 @@ async function siteAdminApi(req, res, segs, user) {
   }
   if (!post) return send(res, 404, { error: "Nicht gefunden" });
   const d = await readBody(req), u = userById(d.userId);
+  if (a === "settings") {
+    if ("payLink" in d) { const v = String(d.payLink || "").trim().slice(0, 300); if (v && !/^https:\/\//.test(v)) return send(res, 400, { error: "Der Zahlungslink muss mit https:// beginnen" }); site.payLink = v; }
+    if ("priceAmount" in d) { const v = String(d.priceAmount || "").trim().slice(0, 12); if (!/^\d{1,5}([.,]\d{1,2})?$/.test(v)) return send(res, 400, { error: "Bitte einen Preis wie 7,99 eingeben" }); site.price.amount = v; }
+    if ("priceNote" in d) site.price.note = String(d.priceNote || "").trim().slice(0, 80);
+    if ("priceCurrency" in d) site.price.currency = String(d.priceCurrency || "EUR").toUpperCase().slice(0, 3);
+    if ("signup" in d) site.signup = d.signup === null ? null : !!d.signup;
+    if ("oscPort" in d) { const v = d.oscPort === "" || d.oscPort == null ? null : Number(d.oscPort); if (v != null && !(Number.isInteger(v) && v >= 1024 && v <= 65535)) return send(res, 400, { error: "OSC-Port: Zahl zwischen 1024 und 65535 oder leer" }); site.oscPort = v; startOsc(); }
+    saveSite();
+    return send(res, 200, { ok: true, osc: oscState });
+  }
+  if (a === "legal") {
+    const L = d.legal || {}, cur = site.legal, def = Legal.DEFAULTS();
+    for (const k of Object.keys(def)) if (k in L) cur[k] = typeof def[k] === "boolean" ? !!L[k] : typeof def[k] === "number" ? Math.max(1, Math.min(365, Number(L[k]) || def[k])) : String(L[k] ?? "").slice(0, k.startsWith("custom") ? 60000 : 600);
+    saveSite();
+    return send(res, 200, { ok: true, legalMissing: Legal.missing(cur) });
+  }
   if (a === "plan") {
     if (!u) return send(res, 404, { error: "Nutzer nicht gefunden" });
     if (d.plan === "free") { u.plan = "free"; u.planUntil = 0; purchases.unshift({ id: auth.id(5), t: Date.now(), userId: u.id, email: u.email, plan: "free", months: 0, source: "manual", ref: "", amount: 0, currency: "", by: user.name }); store.savePurchases(purchases); store.saveUsers(users); }
@@ -543,6 +597,7 @@ async function siteAdminApi(req, res, segs, user) {
   }
   if (a === "siteAdmin") {
     if (!u) return send(res, 404, { error: "Nutzer nicht gefunden" });
+    if (ADMIN_EMAILS.length) return send(res, 400, { error: "Die Admins sind per ADMIN_EMAIL auf dem Server festgelegt" });
     if (u.id === user.id && !d.on) return send(res, 400, { error: "Du kannst dir nicht selbst die Verwaltung entziehen" });
     u.siteAdmin = !!d.on; store.saveUsers(users);
     return send(res, 200, { ok: true, user: row(u) });
@@ -577,9 +632,11 @@ async function stripeWebhook(req, res) {
   const want = crypto.createHmac("sha256", STRIPE_SECRET).update(`${t}.${raw}`).digest("hex");
   if (!v1s.some((v) => v.length === want.length && crypto.timingSafeEqual(Buffer.from(v), Buffer.from(want)))) return send(res, 400, { error: "Ungültige Signatur" });
   let ev; try { ev = JSON.parse(raw); } catch (_) { return send(res, 400, { error: "Ungültige Anfrage" }); }
-  if (ev.type === "checkout.session.completed" || ev.type === "invoice.paid") {
-    const o = ev.data?.object || {}, email = String(o.customer_details?.email || o.customer_email || "").toLowerCase(), ref = String(o.id || ev.id || "");
-    const months = Number(o.metadata?.months) || PLAN_MONTHS, amount = (Number(o.amount_total ?? o.amount_paid) || 0) / 100, currency = String(o.currency || "").toUpperCase();
+  // Abo: invoice.paid kommt bei der ersten Zahlung und bei jeder Verlängerung. Einmalzahlung: checkout.session.completed (mode=payment).
+  const o = ev.data?.object || {};
+  if (ev.type === "invoice.paid" || (ev.type === "checkout.session.completed" && o.mode === "payment")) {
+    const email = String(o.customer_email || o.customer_details?.email || "").toLowerCase(), ref = String(o.id || ev.id || "");
+    const months = Number(o.metadata?.months) || PLAN_MONTHS, amount = (Number(o.amount_paid ?? o.amount_total) || 0) / 100, currency = String(o.currency || "").toUpperCase();
     if (purchases.some((p) => p.ref === ref)) return send(res, 200, { ok: true, duplicate: true });
     const u = email && userByEmail(email);
     if (u) grantPlan(u, months, { source: "stripe", ref, amount, currency });
@@ -589,15 +646,78 @@ async function stripeWebhook(req, res) {
 }
 
 // ---------- OSC-Eingang ----------
-if (OSC_PORT) Trig.listenOsc(OSC_PORT, (pid, cmd, args) => {
-  const list = pid ? [hosts.get(pid)].filter(Boolean) : [...hosts.values()];
-  const q = new URLSearchParams();
-  const a0 = args[0] != null ? String(args[0]) : "", a1 = args[1] != null ? String(args[1]) : "";
-  if (cmd === "load" || cmd === "day") q.set("id", a0); if (cmd === "add" || cmd === "sub") q.set("min", a0 || "1"); if (cmd === "roll") q.set("on", a0);
-  if (cmd === "ready") { q.set("g", a0); q.set("state", a1); } if (cmd === "message") { q.set("text", a0); q.set("visible", a1 || "1"); } if (cmd === "lower") { if (a0 === "hide") q.set("visible", "0"); else if (a0 && a0 !== "show") q.set("id", a0); }
+// Adresse: /tallycall/<API-Schlüssel>/<befehl> [argumente]. Ohne Konten (lokaler Modus) zusätzlich /tallycall/<projekt-id>/<befehl> und /tallycall/<befehl> (alle Projekte).
+let oscSock = null, oscState = { port: 0, ok: false, error: "" };
+function tokenLookup(raw) {
+  const hash = hashToken(raw);
+  for (const h of hosts.values()) { const k = h.meta.tokens.find((x) => x.hash === hash && !x.revoked); if (k && limitsOf(h, LOCAL_USER).tokens) { k.lastUsed = Date.now(); return { h, key: k }; } }
+  return null;
+}
+function oscCommand(seg, args) {
+  const first = seg[0]; let list = [], cmd = "";
+  if (/^tc_/.test(first)) { const f = tokenLookup(first); if (!f || f.key.scope === "read" || seg.length < 2) return; list = [f.h]; cmd = seg[1]; }
+  else if (!AUTH_ON) { if (seg.length >= 2 && hosts.get(first)) { list = [hosts.get(first)]; cmd = seg[1]; } else if (seg.length === 1) { list = [...hosts.values()]; cmd = seg[0]; } else return; }
+  else return;
+  const q = new URLSearchParams(), a0 = args[0] != null ? String(args[0]) : "", a1 = args[1] != null ? String(args[1]) : "";
+  cmd = cmd.toLowerCase();
+  if (cmd === "start" || cmd === "goto" || cmd === "load" || cmd === "day") { if (a0) q.set("id", a0); }
+  if (cmd === "add" || cmd === "sub") q.set("min", a0 || "1");
+  if (cmd === "roll") q.set("on", a0 === "" ? "1" : a0);
+  if (cmd === "ready") { q.set("g", a0); q.set("state", a1 || "ready"); }
+  if (cmd === "message") { q.set("text", a0); q.set("visible", a1 || "1"); }
+  if (cmd === "lower") { if (a0 === "hide" || a0 === "0") q.set("visible", "0"); else if (a0 && a0 !== "show") q.set("id", a0); }
   const act = command(cmd, q); if (!act) return;
-  for (const h of list) { try { h.engine.act(act); audit(h, { name: "OSC" }, describe(h, act, { title: "" }) || cmd); broadcast(h); } catch (_) {} }
-});
+  for (const h of list) { try { h.engine.act(act); audit(h, { name: "OSC" }, describe(h, act, { title: act.id ? titleOf(h, act.id) : "" }) || cmd); broadcast(h); } catch (_) {} }
+}
+function startOsc() {
+  if (oscSock) { try { oscSock.close(); } catch (_) {} oscSock = null; }
+  const port = oscPortNow(); oscState = { port, ok: false, error: "" };
+  if (!port) return;
+  oscSock = Trig.listenOsc(port, oscCommand, { onReady: () => { oscState.ok = true; console.log(`  OSC-Eingang auf UDP ${port} (/tallycall/<schlüssel>/<befehl>)`); }, onError: (e) => { oscState.ok = false; oscState.error = e.message; console.error("OSC-Eingang:", e.message); } });
+}
+if (require.main === module) startOsc();
+
+// ---------- Rechtliche Seiten und Exporte ----------
+const legalDomain = () => { try { return new URL(PUBLIC_URL).hostname; } catch (_) { return ""; } };
+function legalPage(req, res, url, kind, user) {
+  const q = url.searchParams.get("lang"), lang = q === "en" || q === "de" ? q : /^de/i.test(req.headers["accept-language"] || "") ? "de" : "en";
+  const html = Legal.render(kind === "impressum" ? "impressum" : "privacy", site.legal, lang, { domain: legalDomain(), plans: PLANS, incomplete: isSiteAdmin(user) && Legal.missing(site.legal).length > 0 });
+  res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" }); res.end(html);
+}
+const csvCell = (v) => { const t = String(v ?? "").replace(/\r?\n/g, " "); return /[;"]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+function exportCsv(res, h, kind) {
+  const s = h.state, tz = s.settings.timezone, rows = [];
+  const stamp = (ms) => { if (!ms) return ""; const p = CLS.nowParts(ms, tz); return `${p.date.split("-").reverse().join(".")} ${CLS.hhmmss(p.sec)}`; };
+  const typeName = { event: "Punkt", group: "Gruppe", break: "Pause" };
+  if (kind === "actual") {
+    rows.push(["Tag", "Datum", "Titel", "Typ", "Plan Start", "Ist Start", "Abweichung Start (s)", "Plan Ende", "Ist Ende", "Plan Dauer", "Ist Dauer", "Abweichung Dauer (s)"]);
+    for (const day of s.days) for (const r of CLS.schedule(day)) {
+      const a = s.actuals[r.e.id]; if (r.group || !a || a.dayId !== day.id) continue;
+      const ps = CLS.nowParts(a.start, tz), dev = ps.date === day.date ? ps.sec - r.start : "", dur = a.end ? Math.round((a.end - a.start) / 1000) : "";
+      rows.push([day.name, day.date, r.e.title, typeName[r.e.type], CLS.hhmmss(r.start), stamp(a.start), dev, CLS.hhmmss(r.end), stamp(a.end), CLS.fmtDur(r.e.duration), dur === "" ? "" : CLS.fmtDur(dur), dur === "" ? "" : dur - r.e.duration]);
+    }
+  } else {
+    rows.push(["Tag", "Datum", "Start", "Ende", "Dauer", "Typ", "Ebene", "Titel", "Untertitel", "Sprecher", "Notiz", "Cues"]);
+    for (const day of s.days) for (const r of CLS.schedule(day)) {
+      const cues = r.group ? "" : [...r.e.cues].sort((x, y) => x.offset - y.offset).map((c) => `${s.gewerke.find((g) => g.id === c.gewerk)?.short || "-"} +${CLS.fmtDur(c.offset)} ${c.text}`).join(" | ");
+      rows.push([day.name, day.date, r.skip ? "" : CLS.hhmmss(r.start), r.group || r.skip ? "" : CLS.hhmmss(r.end), r.group ? "" : CLS.fmtDur(r.e.duration), typeName[r.e.type] + (r.skip ? " (entfällt)" : ""), r.depth, r.e.title, r.e.subtitle, r.e.presenter, r.e.note, cues]);
+    }
+  }
+  const body = "\ufeff" + rows.map((r) => r.map(csvCell).join(";")).join("\r\n") + "\r\n";
+  res.writeHead(200, { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="${(h.meta.name.replace(/[^\w.-]+/g, "_") || "projekt")}-${kind === "actual" ? "ist-zeiten" : "plan"}.csv"` });
+  res.end(body);
+}
+
+const DOCS = { osc: ["OSC", "docs/OSC.md"], api: ["API und Trigger", "docs/INTEGRATIONS.md"], companion: ["Companion-Modul", "integrations/companion/README.md"] };
+function docsPage(res, name) {
+  const d = DOCS[name]; if (!d) return page(res, 404, "Seite nicht gefunden", "Diese Anleitung gibt es nicht.");
+  let md = ""; try { md = fs.readFileSync(path.join(__dirname, d[1]), "utf8"); } catch (_) { return page(res, 404, "Seite nicht gefunden", "Diese Anleitung gibt es nicht."); }
+  const nav = Object.entries(DOCS).map(([k, v]) => `<a href="/docs/${k}"${k === name ? ' style="color:var(--fg)"' : ""}>${v[0]}</a>`).join("");
+  res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" });
+  res.end(`<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${d[0]} · Tallycall</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/app.css">
+<style>.lg { max-width:820px; margin:0 auto; padding:34px 20px 80px; } .lg h1 { font-size:32px; letter-spacing:-.03em; margin:26px 0 10px; } .lg h2 { font-size:21px; margin:34px 0 8px; letter-spacing:-.02em; } .lg h3 { font-size:16px; margin:22px 0 6px; } .lg p, .lg li { color:var(--fg2); line-height:1.65; } .lg li { margin:3px 0; } .lg a { color:var(--focus); } .lg blockquote { margin:14px 0; padding:10px 16px; border-left:3px solid var(--focus); background:var(--bg1); border-radius:0 10px 10px 0; color:var(--fg2); } .lg .code { margin:10px 0; } .lg table { margin:12px 0; } .lgbar { display:flex; align-items:center; gap:16px; flex-wrap:wrap; } .lgbar .sp { flex:1; }</style></head><body>
+<div class="lg"><div class="lgbar"><a class="brand" href="/"><img src="/logo.svg" alt="">Tallycall</a><span class="sp"></span>${nav}</div>${Md.render(md)}</div></body></html>`);
+}
 
 // ---------- Seiten ----------
 function memberPage(req, res, url, segs, user) {
@@ -625,6 +745,8 @@ async function handle(req, res) {
   const url = new URL(req.url, "http://x"), segs = url.pathname.split("/").filter(Boolean).map(decodeURIComponent);
   const user = currentUser(req), top = segs[0];
   if (top === "api") return api(req, res, url, segs.slice(1), user);
+  if (top === "docs" && segs.length === 2) return docsPage(res, segs[1]);
+  if (top === "impressum" || top === "datenschutz") return legalPage(req, res, url, top, user);
   if (top === "p") return memberPage(req, res, url, segs, user);
   if (top === "s") return sharePage(req, res, url, segs);
   if (!top) return !AUTH_ON ? redirect(res, "/app") : sendFile(res, path.join(PUB, "index.html"));
@@ -649,7 +771,7 @@ const lanUrls = () => Object.values(os.networkInterfaces()).flat().filter((i) =>
 if (require.main === module) server.listen(PORT, HOST, () => {
   console.log(`Tallycall läuft auf Port ${PORT} (${hosts.size} Projekt${hosts.size === 1 ? "" : "e"}, Daten: ${DATA})`);
   for (const u of lanUrls()) console.log(`  im Netzwerk: ${u}`);
-  console.log(AUTH_ON ? `  Konten: an${SIGNUP ? " (Registrierung offen, ALLOW_SIGNUP=0 schließt sie)" : " (Registrierung geschlossen)"}, Lizenzen: ${PLANS ? "an" : "aus"}` : "  ACHTUNG: lokaler Modus ohne Login. Jeder im Netzwerk kann alles ändern. Online nie so betreiben.");
-  console.log(`  Trigger: ${TRIGGERS}${OSC_PORT ? "" : " (OSC-Eingang aus, OSC_PORT setzt ihn)"}`);
+  console.log(AUTH_ON ? `  Konten: an${signupOpen() ? " (Registrierung offen, ALLOW_SIGNUP=0 schließt sie)" : " (Registrierung geschlossen)"}, Lizenzen: ${PLANS ? "an" : "aus"}` : "  ACHTUNG: lokaler Modus ohne Login. Jeder im Netzwerk kann alles ändern. Online nie so betreiben.");
+  console.log(`  Trigger: ${TRIGGERS}${oscPortNow() ? "" : " (OSC-Eingang aus, Port unter Verwaltung → Server oder OSC_PORT)"}`);
 });
 module.exports = { server };

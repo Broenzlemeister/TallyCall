@@ -1,18 +1,19 @@
 <!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/app.css"><link rel="icon" href="/favicon.svg"><title>Verwaltung · Tallycall</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
 <style>
+.warnbox { background:#241c0a; border:1px solid #5a4417; color:#f5d68a; border-radius:10px; padding:10px 14px; font-size:13.5px; }
+.f2c { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 14px; } @media (max-width:760px) { .f2c { grid-template-columns:1fr; } }
 .cfg { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:6px 18px; font-size:13px; } .cfg div { display:flex; justify-content:space-between; gap:10px; padding:5px 0; border-bottom:1px solid var(--line); } .cfg span:last-child { font-family:var(--mono); color:var(--fg2); text-align:right; overflow:hidden; text-overflow:ellipsis; }
 .tbl .acts { display:flex; gap:4px; justify-content:flex-end; flex-wrap:wrap; }
 </style></head>
 <body>
 <header class="appbar">
   <a class="brand" href="/app"><img src="/logo.svg" alt="">Tallycall</a><span class="sep">/</span><span class="proj"><b>Verwaltung</b></span><span class="sp"></span>
-  <a class="btn sm ghost" href="/app">Meine Projekte</a><select id="langSel" aria-label="Sprache" style="width:auto;padding:5px 26px 5px 10px;font-size:13px"></select>
+  <a class="btn sm ghost" href="/app">Meine Projekte</a>
 </header>
 <div class="wrap" style="max-width:1300px">
   <div class="stat" id="stats"></div>
   <div class="card" style="margin-top:14px">
-    <div class="ptabs"><button data-tab="u">Nutzer</button><button data-tab="k">Käufe</button><button data-tab="p">Projekte</button><button data-tab="c">Server</button></div>
+    <div class="ptabs"><button data-tab="u">Nutzer</button><button data-tab="k">Käufe</button><button data-tab="p">Projekte</button><button data-tab="s">Einstellungen</button><button data-tab="l">Rechtliches</button><button data-tab="c">Hilfe</button></div>
     <div data-pane="u">
       <div class="row2" style="margin-bottom:10px"><input id="q" placeholder="Suchen (Name, E-Mail)" style="max-width:280px"><select id="fPlan" style="width:auto"><option value="">Alle Pläne</option><option value="pro">Pro</option><option value="free">Free</option></select><span class="hint">Pro-Plan ohne Ablauf = unbegrenzt. Server-Admins haben immer Pro.</span></div>
       <table class="tbl"><thead><tr><th>Nutzer</th><th>Plan</th><th>Projekte</th><th>Registriert</th><th>Zuletzt aktiv</th><th class="r">Aktionen</th></tr></thead><tbody id="users"></tbody></table>
@@ -21,21 +22,68 @@
       <p class="hint" style="margin-top:0">Alle Freischaltungen: Zahlungen über Stripe (Webhook) und manuelle Vergaben. Betrag in der Währung der Zahlung.</p>
       <table class="tbl"><thead><tr><th>Zeit</th><th>Nutzer</th><th>Plan</th><th>Laufzeit</th><th>Betrag</th><th>Quelle</th><th>Referenz</th></tr></thead><tbody id="purch"></tbody></table>
     </div>
-    <div data-pane="p" hidden><table class="tbl"><thead><tr><th>Projekt</th><th>Besitzer</th><th>Mitglieder</th><th>Tage</th><th>Status</th><th>Geändert</th></tr></thead><tbody id="projs"></tbody></table></div>
-    <div data-pane="c" hidden>
+    <div data-pane="p" hidden><table class="tbl"><thead><tr><th>Projekt (öffnen)</th><th>Besitzer</th><th>Mitglieder</th><th>Tage</th><th>Status</th><th>Geändert</th></tr></thead><tbody id="projs"></tbody></table></div>
+    <div data-pane="s" hidden>
+      <h3>Preis und Bezahlung</h3>
+      <div class="row2" style="align-items:flex-end;gap:12px">
+        <div style="width:110px"><label style="margin-top:0">Preis pro Monat</label><input id="sPrice" placeholder="7,99"></div>
+        <div style="width:80px"><label style="margin-top:0">Währung</label><input id="sCur" maxlength="3" placeholder="EUR"></div>
+        <div style="flex:1;min-width:220px"><label style="margin-top:0">Hinweis zum Preis (optional)</label><input id="sNote" placeholder="z. B. inkl. MwSt., monatlich kündbar"></div>
+      </div>
+      <label>Zahlungslink (Stripe Payment Link, https://…)</label><input id="sPay" placeholder="https://buy.stripe.com/…"><p class="hint" id="sPayHint" style="margin:4px 0 0"></p>
+      <h3 style="margin-top:20px">Registrierung</h3>
+      <label class="sw"><input type="checkbox" id="sSignup"> Neue Konten dürfen sich selbst registrieren</label>
+      <h3 style="margin-top:20px">OSC-Eingang</h3>
+      <div class="row2" style="gap:12px"><input id="sOsc" type="number" min="1024" max="65535" placeholder="leer = aus, z. B. 9000" style="max-width:220px"><span id="sOscState"></span></div>
+      <p class="hint">UDP-Port, auf dem Tallycall OSC-Befehle annimmt (Adresse /tallycall/&lt;API-Schlüssel&gt;/&lt;befehl&gt;). Den Port in der Firewall und bei Docker freigeben. Anleitung: <a href="/docs/osc" target="_blank">/docs/osc</a>.</p>
+      <p style="margin-top:14px"><button class="primary" id="bSettings">Speichern</button></p>
+      <h3 style="margin-top:24px">Konfiguration</h3>
       <div class="cfg" id="cfg"></div>
-      <h3 style="margin-top:18px">Bezahlung einrichten</h3>
+    </div>
+    <div data-pane="l" hidden>
+      <div class="warnbox">Diese Texte sind Vorlagen und keine Rechtsberatung. Bitte Angaben vollständig und wahrheitsgemäß ausfüllen und die Texte vor dem Livegang prüfen (lassen). Bei Verkauf an Verbraucher kommen ggf. AGB und eine Widerrufsbelehrung dazu.</div>
+      <div id="legalMissing" class="hint" style="margin:10px 0"></div>
+      <h3>Anbieter (Impressum und Verantwortlicher)</h3>
+      <div class="f2c">
+        <div><label>Name oder Firma</label><input data-l="name"></div><div><label>Rechtsform (optional)</label><input data-l="form" placeholder="z. B. Einzelunternehmen, GmbH"></div>
+        <div><label>Straße und Hausnummer</label><input data-l="street"></div><div class="row2" style="flex-wrap:nowrap;align-items:flex-end"><div style="width:110px"><label>PLZ</label><input data-l="zip"></div><div style="flex:1"><label>Ort</label><input data-l="city"></div></div>
+        <div><label>Land</label><input data-l="country"></div><div><label>E-Mail</label><input data-l="email" type="email"></div>
+        <div><label>Telefon (empfohlen)</label><input data-l="phone"></div><div><label>Vertretungsberechtigt (bei Firmen)</label><input data-l="represented"></div>
+        <div><label>Umsatzsteuer-ID (falls vorhanden)</label><input data-l="vatId" placeholder="DE123456789"></div><div><label>Verantwortlich für Inhalte (leer = wie Anbieter)</label><input data-l="contentResp"></div>
+      </div>
+      <label>Registereintrag (falls vorhanden)</label><textarea data-l="register" rows="2" placeholder="Amtsgericht …, HRB …"></textarea>
+      <label>Verbraucherschlichtung</label><select data-l="disputeResolution" style="max-width:380px"><option value="no">Nicht bereit und nicht verpflichtet</option><option value="yes">Bereit zur Teilnahme</option></select>
+      <h3 style="margin-top:20px">Datenschutzerklärung</h3>
+      <div class="f2c">
+        <div><label>Hosting-Anbieter (Name und Adresse)</label><input data-l="hoster"></div><div><label>Zusatz zum Hosting (optional)</label><input data-l="hosterNote" placeholder="z. B. Standort Deutschland"></div>
+        <div><label>Aufbewahrung der Server-Logs (Tage)</label><input data-l="logDays" type="number" min="1" max="365"></div><div><label>Aufsichtsbehörde (optional)</label><input data-l="authority" placeholder="z. B. Landesbeauftragte(r) für Datenschutz …"></div>
+      </div>
+      <label class="sw" style="margin-top:12px"><input type="checkbox" data-l="stripe"> Zahlungen über Stripe im Text erwähnen</label>
+      <label>Zusatztext Impressum (optional, Zeilenumbrüche bleiben)</label><textarea data-l="extraImpressum" rows="2"></textarea>
+      <label>Zusatztext Datenschutz (optional)</label><textarea data-l="extraPrivacy" rows="2"></textarea>
+      <label>Stand der Datenschutzerklärung (leer = heute)</label><input data-l="updated" placeholder="13.10.2026" style="max-width:200px">
+      <div class="row2" style="margin-top:16px"><button class="primary" id="bLegal">Speichern</button><a class="btn" href="/impressum" target="_blank">Impressum ansehen</a><a class="btn" href="/datenschutz" target="_blank">Datenschutz ansehen</a><a class="btn ghost" href="/impressum?lang=en" target="_blank">English</a></div>
+      <details style="margin-top:22px"><summary class="hint" style="cursor:pointer">Eigenen Text verwenden (HTML) statt der Vorlage</summary>
+        <p class="hint">Wenn du die Texte von deiner Anwaltskanzlei oder einem Generator bekommen hast, kannst du sie hier als HTML einfügen. Mit „Vorlage laden“ startest du vom erzeugten Text.</p>
+        <label class="sw"><input type="checkbox" data-l="useCustomImpressum"> Eigenes Impressum verwenden</label>
+        <textarea data-l="customImpressum" rows="8" style="font-family:var(--mono);font-size:12.5px"></textarea><p class="row2" style="margin:6px 0 14px"><button class="sm" data-load="impressum">Vorlage laden (Deutsch)</button></p>
+        <label class="sw"><input type="checkbox" data-l="useCustomPrivacy"> Eigene Datenschutzerklärung verwenden</label>
+        <textarea data-l="customPrivacy" rows="8" style="font-family:var(--mono);font-size:12.5px"></textarea><p class="row2" style="margin:6px 0 0"><button class="sm" data-load="privacy">Vorlage laden (Deutsch)</button></p>
+      </details>
+    </div>
+    <div data-pane="c" hidden>
+      <h3 style="margin-top:0">Bezahlung einrichten</h3>
       <ol class="hint" style="line-height:1.7;padding-left:18px;margin:0">
-        <li>Bei Stripe ein Produkt „Tallycall Pro“ mit Preis anlegen und einen Payment Link erzeugen. „E-Mail-Adresse erfassen“ eingeschaltet lassen. Optional in den Metadaten „months=12“ setzen, sonst gilt PLAN_MONTHS.</li>
-        <li>In der .env auf dem Server eintragen: PAY_LINK (der Stripe-Link), TALLYCALL_PLANS=on, PLAN_MONTHS=12.</li>
-        <li>Bei Stripe einen Webhook auf https://DOMAIN/api/stripe/webhook mit dem Ereignis „checkout.session.completed“ anlegen und das Signatur-Geheimnis als STRIPE_WEBHOOK_SECRET eintragen.</li>
+        <li>Bei Stripe ein Produkt „Tallycall Pro“ als wiederkehrenden Preis (monatlich, 7,99 €) anlegen und einen Payment Link erzeugen. Das Kundenportal in Stripe aktivieren, damit Kunden selbst kündigen können.</li>
+        <li>Unter Einstellungen den Zahlungslink eintragen (oder PAY_LINK in der .env). Das Abo ist monatlich, eine Zahlung verlängert Pro um einen Monat plus drei Tage Nachfrist. In der .env: TALLYCALL_PLANS=on.</li>
+        <li>Bei Stripe einen Webhook auf https://DOMAIN/api/stripe/webhook mit dem Ereignis „invoice.paid“ anlegen und das Signatur-Geheimnis als STRIPE_WEBHOOK_SECRET eintragen.</li>
         <li>Container neu starten (docker compose up -d). Zahlungen schalten das Konto mit derselben E-Mail automatisch auf Pro, auch wenn es erst später registriert wird.</li>
       </ol>
       <p class="hint">Dein eigenes Konto ist Server-Admin, weil es das erste war oder in ADMIN_EMAIL steht. Admins sehen diese Seite und haben immer Pro.</p>
     </div>
   </div>
 </div>
-<script src="/i18n.js"></script>
+<script>window.I18N_FORCE = "de";</script><script src="/i18n.js"></script>
 <script>
 const $ = (i) => document.getElementById(i), E = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const post = async (path, body) => { const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "x-cl": "1" }, body: JSON.stringify(body) }); const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || "Fehler"); return j; };
@@ -52,7 +100,7 @@ function modal(title, html, actions) {
 (() => { const host = document.querySelector(".card"); const btns = [...host.querySelectorAll("[data-tab]")], panes = [...host.querySelectorAll("[data-pane]")]; const show = (id) => { btns.forEach((b) => b.setAttribute("aria-pressed", b.dataset.tab === id)); panes.forEach((p) => (p.hidden = p.dataset.pane !== id)); }; btns.forEach((b) => (b.onclick = () => show(b.dataset.tab))); show("u"); })();
 async function load() {
   const r = await fetch("/api/admin/overview"); if (r.status === 403 || r.status === 401) { location.href = "/app"; return; }
-  data = await r.json(); draw();
+  data = await r.json(); draw(); fillForms(); paintStatus();
 }
 function draw() {
   const s = data.stats, c = data.config;
@@ -61,11 +109,37 @@ function draw() {
   $("users").innerHTML = data.users.filter((u) => (!q || (u.name + " " + u.email).toLowerCase().includes(q)) && (!fp || u.plan === fp)).map((u) => `<tr data-id="${E(u.id)}"><td><b translate="no">${E(u.name)}</b> ${u.siteAdmin ? '<span class="pill pro">Server-Admin</span>' : ""} ${u.disabled ? '<span class="pill bad">gesperrt</span>' : ""}<div class="hint" translate="no">${E(u.email)}</div></td>
     <td><span class="pill ${u.plan === "pro" ? "pro" : ""}">${u.plan === "pro" ? "Pro" : "Free"}</span>${u.planSet === "pro" && u.planUntil ? `<div class="hint">bis ${dt(u.planUntil)}</div>` : u.planSet === "pro" ? '<div class="hint">unbegrenzt</div>' : ""}</td>
     <td translate="no">${u.projects} <span class="hint">(${u.owned} eigene)</span></td><td translate="no">${dt(u.created)}</td><td translate="no">${dt(u.lastLogin)}</td>
-    <td><div class="acts"><button class="sm" data-a="plan">Plan …</button><button class="sm ghost" data-a="admin">${u.siteAdmin ? "Admin entziehen" : "Zum Admin"}</button><button class="sm ghost" data-a="pw">Passwort</button><button class="sm ghost" data-a="disable">${u.disabled ? "Entsperren" : "Sperren"}</button><button class="sm ghost stop" data-a="del">Löschen</button></div></td></tr>`).join("") || '<tr><td colspan="6" class="hint">Keine Nutzer.</td></tr>';
+    <td><div class="acts"><button class="sm" data-a="plan">Plan …</button>${data.config.adminLocked ? "" : `<button class="sm ghost" data-a="admin">${u.siteAdmin ? "Admin entziehen" : "Zum Admin"}</button>`}<button class="sm ghost" data-a="pw">Passwort</button><button class="sm ghost" data-a="disable">${u.disabled ? "Entsperren" : "Sperren"}</button><button class="sm ghost stop" data-a="del">Löschen</button></div></td></tr>`).join("") || '<tr><td colspan="6" class="hint">Keine Nutzer.</td></tr>';
   $("purch").innerHTML = data.purchases.map((p) => `<tr><td translate="no">${dtt(p.t)}</td><td translate="no">${E(p.email)}${p.userId ? "" : ' <span class="pill">noch kein Konto</span>'}</td><td>${p.plan === "pro" ? '<span class="pill pro">Pro</span>' : '<span class="pill">Free</span>'}</td><td translate="no">${p.plan === "free" ? "–" : p.months ? p.months + " " + I18N.t("Monate") : I18N.t("unbegrenzt")}</td><td translate="no">${p.amount ? p.amount.toLocaleString(I18N.locale, { minimumFractionDigits: 2 }) + " " + E(p.currency) : "–"}</td><td>${p.source === "stripe" ? "Stripe" : I18N.t("manuell") + (p.by ? " (" + E(p.by) + ")" : "")}</td><td class="hint mono" translate="no">${E(p.ref)}</td></tr>`).join("") || '<tr><td colspan="7" class="hint">Noch keine Käufe.</td></tr>';
-  $("projs").innerHTML = data.projects.map((p) => `<tr><td><b translate="no">${E(p.name)}</b> <span class="hint mono">${E(p.id)}</span></td><td translate="no">${E(p.owner)}</td><td translate="no">${p.members}</td><td translate="no">${p.days}</td><td>${p.status === "running" ? '<span class="pill ok">läuft</span>' : p.status === "paused" ? '<span class="pill">pausiert</span>' : "–"}</td><td translate="no">${dtt(p.updated)}</td></tr>`).join("");
+  $("projs").innerHTML = data.projects.map((p) => `<tr><td><a href="/p/${E(p.id)}/"><b translate="no">${E(p.name)}</b></a> <span class="hint mono">${E(p.id)}</span></td><td translate="no">${E(p.owner)}</td><td translate="no">${p.members}</td><td translate="no">${p.days}</td><td>${p.status === "running" ? '<span class="pill ok">läuft</span>' : p.status === "paused" ? '<span class="pill">pausiert</span>' : "–"}</td><td translate="no">${dtt(p.updated)}</td></tr>`).join("");
   $("cfg").innerHTML = [["Version", c.version], ["Konten", c.auth ? "an" : "aus (lokal)"], ["Registrierung", c.signup ? "offen" : "geschlossen"], ["Lizenzen (TALLYCALL_PLANS)", c.plans ? "an" : "aus"], ["Payment Link (PAY_LINK)", c.payLink ? "gesetzt" : "fehlt"], ["Stripe-Webhook", c.stripe ? "eingerichtet" : "fehlt"], ["Laufzeit je Kauf", c.planMonths + " Monate"], ["Trigger-Politik", c.triggers], ["OSC-Eingang", c.oscPort || "aus"], ["Admin-E-Mails", c.adminEmails.join(", ") || "–"], ["Öffentliche Adresse", c.publicUrl || "–"], ["Datenordner", c.dataDir]].map(([k, v]) => `<div><span>${k}</span><span translate="no">${E(v)}</span></div>`).join("");
 }
+let filled = false;
+function fillForms() {
+  if (filled || !data.site) return; filled = true;
+  const st = data.site, L = st.legal;
+  $("sPrice").value = st.price.amount; $("sCur").value = st.price.currency; $("sNote").value = st.price.note || ""; $("sPay").value = st.payLink; $("sSignup").checked = st.signup; $("sOsc").value = st.oscPort;
+  $("sPayHint").textContent = st.payLinkEnv && !st.payLink ? "Aktuell kommt der Link aus der Umgebungsvariable PAY_LINK." : "";
+  document.querySelectorAll("[data-l]").forEach((el) => { const k = el.dataset.l; if (el.type === "checkbox") el.checked = !!L[k]; else el.value = L[k] ?? ""; });
+}
+function paintStatus() {
+  const st = data.site; if (!st) return;
+  $("sOscState").innerHTML = !st.oscPort && !st.oscEnv ? '<span class="pill">aus</span>' : st.osc.ok ? `<span class="pill ok">aktiv auf UDP ${st.osc.port}</span>` : st.osc.error ? `<span class="pill bad">${E(st.osc.error)}</span>` : `<span class="pill">${st.osc.port ? "startet …" : "aus"}</span>`;
+  const m = st.legalMissing || []; const names = { name: "Name", street: "Straße", city: "Ort", email: "E-Mail" };
+  $("legalMissing").innerHTML = m.length ? `<span class="pill bad">Es fehlen noch: ${m.map((k) => names[k]).join(", ")}</span> Impressum und Datenschutz sind erst mit diesen Angaben vollständig.` : '<span class="pill ok">Pflichtangaben vorhanden</span>';
+}
+$("bSettings").onclick = async () => {
+  try { const r = await post("/api/admin/settings", { priceAmount: $("sPrice").value, priceCurrency: $("sCur").value, priceNote: $("sNote").value, payLink: $("sPay").value, signup: $("sSignup").checked, oscPort: $("sOsc").value }); toast("Gespeichert"); filled = false; await load(); } catch (e) { toast(e.message, true); }
+};
+$("bLegal").onclick = async () => {
+  const legal = {}; document.querySelectorAll("[data-l]").forEach((el) => { legal[el.dataset.l] = el.type === "checkbox" ? el.checked : el.value; });
+  try { await post("/api/admin/legal", { legal }); toast("Gespeichert"); filled = false; await load(); } catch (e) { toast(e.message, true); }
+};
+document.querySelectorAll("[data-load]").forEach((b) => (b.onclick = async () => {
+  const kind = b.dataset.load, ta = document.querySelector(`[data-l="${kind === "impressum" ? "customImpressum" : "customPrivacy"}"]`);
+  if (ta.value && !confirm("Den vorhandenen eigenen Text durch die Vorlage ersetzen?")) return;
+  ta.value = (await (await fetch(`/api/admin/legal-preview?kind=${kind}&lang=de`)).json()).html;
+}));
 $("q").oninput = draw; $("fPlan").onchange = draw;
 $("users").onclick = async (e) => {
   const b = e.target.closest("[data-a]"); if (!b) return; const id = b.closest("tr").dataset.id, u = data.users.find((x) => x.id === id), a = b.dataset.a;

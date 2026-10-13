@@ -5,10 +5,10 @@
   "main": "main.js",
   "license": "MIT",
   "dependencies": {
-    "@companion-module/base": "~1.11.0"
+    "@companion-module/base": "~1.14.1"
   },
   "devDependencies": {
-    "@companion-module/tools": "^2.1.0"
+    "@companion-module/tools": "~2.8.0"
   },
   "scripts": {
     "package": "companion-module-build"

@@ -5,13 +5,8 @@ const UI = (() => {
   const ctx = CL.ctx, isMember = ctx.kind === "project" || ctx.kind === "demo";
   const $ = (sel, el = document) => el.querySelector(sel);
 
-  // Schrift nachladen (nur online, sonst Systemschrift). Blockiert nie das Rendern.
-  (() => {
-    const l = document.createElement("link"); l.rel = "stylesheet";
-    l.href = "https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap";
-    document.head.appendChild(l);
-    const f = document.createElement("link"); f.rel = "icon"; f.href = "/favicon.svg"; document.head.appendChild(f);
-  })();
+  // Keine externen Schriften (Datenschutz): es gilt die Systemschrift. Nur das Symbol setzen.
+  (() => { const f = document.createElement("link"); f.rel = "icon"; f.href = "/favicon.svg"; document.head.appendChild(f); })();
 
   function toast(msg, bad) {
     document.querySelectorAll(".toast").forEach((t) => t.remove());
@@ -94,7 +89,7 @@ const UI = (() => {
     const tabs = [["", "Regie", "regie"], ["editor", "Planung", "editor"], ["timeline", "Timeline", "timeline"], ["grafik", "Bauchbinden", "grafik"], ["gewerk", "Gewerke", "gewerk"], ["integrations", "Trigger", "integrations"]];
     host.className = "appbar";
     host.innerHTML = `<a class="brand" href="/app" title="Alle Projekte"><img src="/logo.svg" alt="">Tallycall</a><span class="sep">/</span>
-      <span class="proj"><b translate="no">${E(meta.name)}</b>${meta.role === "admin" ? "" : '<span class="badge">Editor</span>'}</span>
+      <span class="proj"><b translate="no">${E(meta.name)}</b>${meta.viaAdmin ? '<span class="badge" title="Du siehst dieses Projekt als Server-Admin">Server-Admin</span>' : meta.role === "admin" ? "" : '<span class="badge">Editor</span>'}</span>
       <nav class="tabs" aria-label="Bereiche">${tabs.map(([p, n, k]) => `<a href="${ctx.base}/${p}" ${k === active ? 'aria-current="page"' : ""}>${n}</a>`).join("")}</nav><span class="sp"></span>
       <span id="draftChip" class="draftchip" hidden>Entwurf offen</span>
       <button class="btn sm" id="uiScreens">Screens teilen</button>

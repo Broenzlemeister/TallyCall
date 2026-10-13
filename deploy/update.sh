@@ -6,6 +6,7 @@ cd "$(dirname "$(readlink -f "$0")")/.."
 # Als root gestartet? Dann als Besitzer des Ordners weiterlaufen (git verweigert sonst "dubious ownership").
 OWNER=$(stat -c %U .)
 if [ "$(id -u)" = 0 ] && [ "$OWNER" != root ]; then exec sudo -u "$OWNER" -H "$(readlink -f "$0")" "$@"; fi
+grep -q "^ADMIN_EMAIL=." .env 2>/dev/null || echo "HINWEIS: In .env fehlt ADMIN_EMAIL. Ohne sie ist das erste registrierte Konto Server-Admin. Eintragen: echo ADMIN_EMAIL=deine@adresse.de >> $(pwd)/.env"
 echo "Sicherung der Daten."
 ./deploy/backup.sh || echo "  Sicherung übersprungen"
 echo "Hole Änderungen."

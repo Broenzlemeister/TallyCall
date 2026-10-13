@@ -23,8 +23,10 @@ jobs:
         run: for f in server.js lib/*.js public/*.js; do node --check "$f"; done
       - name: Übersetzungen (Vollständigkeit, Platzhalter)
         run: node tools/i18n-check.js
-      - name: Rauchtest (Konten, Rollen, Freigaben, Seiten)
+      - name: Rauchtest (Konten, Rollen, Freigaben, Seiten, Zahlung, OSC)
         run: node tools/smoke.js
+      - name: Companion-Modul (Verbindungscode, Konto, Lokal, Presets)
+        run: node tools/test-companion.js
 
   deploy:
     name: Deployment auf das VPS

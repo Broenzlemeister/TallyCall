@@ -16,16 +16,26 @@
         <div class="row2" style="margin-top:12px"><button id="rAdd">+ Regel</button></div>
         <p class="hint">Trigger für einzelne Punkte oder Cues legst du in der Planung direkt am Punkt an (⚡).</p>
       </div>
+      <div class="card" id="oscCard"><h3>OSC</h3>
+        <div class="row2" style="justify-content:space-between"><span id="oscStatus"></span><a class="btn sm ghost" href="/docs/osc" target="_blank">Anleitung öffnen</a></div>
+        <h4 class="hint" style="margin:14px 0 6px;text-transform:uppercase;letter-spacing:.08em;font-size:11px">Eingang: Tallycall per OSC steuern</h4>
+        <p class="hint" style="margin-top:0">Pult, TouchOSC, Companion oder QLab senden an die Adresse des Servers (UDP). Mit API-Schlüssel in der Adresse, damit das Projekt eindeutig ist.</p>
+        <div class="code" id="oscAddr" translate="no"></div>
+        <table class="tbl" style="margin-top:10px"><thead><tr><th>Adresse</th><th>Argumente</th><th>Wirkung</th></tr></thead><tbody id="oscCmds"></tbody></table>
+        <h4 class="hint" style="margin:18px 0 6px;text-transform:uppercase;letter-spacing:.08em;font-size:11px">Ausgang: Zustand senden (Feedback)</h4>
+        <p class="hint" style="margin-top:0">Bei einem OSC-Ziel „Zustand laufend senden“ einschalten, dann schickt Tallycall Titel, Restzeit, Fortschritt, Status und Bereit-Meldungen an dieses Gerät. Adressen (Präfix einstellbar):</p>
+        <div class="code" id="oscFb" translate="no"></div>
+      </div>
       <div class="card"><h3>Sendeprotokoll <button class="sm ghost" id="logRefresh" style="margin-left:8px">Aktualisieren</button></h3><div class="tlog" id="tlog"></div></div>
     </section>
     <aside>
       <div class="card" id="apiCard"><h3>Steuerung von außen</h3>
-        <p class="hint" style="margin-top:0">Companion (Stream Deck), Browser-Favoriten oder jedes Gerät, das eine URL aufrufen kann, steuern die Show über einen API-Schlüssel.</p>
+        <p class="hint" style="margin-top:0">Companion (Stream Deck), OSC, Browser-Favoriten oder jedes Gerät, das eine URL aufrufen kann, steuern die Show über einen API-Schlüssel. Für Companion erzeugst du hier einen Verbindungscode, den du im Modul einfügst. Alternativ meldet sich das Modul mit deinem Konto an oder spricht direkt mit einem lokalen Server.</p>
         <div id="tokens"></div>
-        <div class="row2" style="margin-top:10px"><input id="tkName" placeholder="Name, z. B. Companion Regie" style="max-width:220px"><select id="tkScope" style="width:auto"><option value="control">Steuern</option><option value="read">Nur lesen</option></select><button id="tkAdd" class="primary">Schlüssel erstellen</button></div>
+        <div class="row2" style="margin-top:10px"><input id="tkName" placeholder="Name, z. B. Companion Regie" style="max-width:220px"><select id="tkScope" style="width:auto"><option value="control">Steuern</option><option value="read">Nur lesen</option></select><button id="tkAdd" class="primary">Schlüssel / Code erstellen</button></div>
         <div id="tkNew" hidden style="margin-top:10px"></div>
         <details style="margin-top:12px"><summary class="hint" style="cursor:pointer">Befehle per URL</summary><div class="code" id="cmdHelp" translate="no"></div></details>
-        <details style="margin-top:8px"><summary class="hint" style="cursor:pointer">Companion-Modul</summary><p class="hint">Das Modul liegt im Repo im Ordner „integrations/companion“. In Companion: Einstellungen → Entwickler-Modulpfad auf den Ordner setzen, Verbindung „Tallycall“ anlegen, Adresse, Projekt-ID und Schlüssel eintragen. Es bringt Aktionen (Start, Weiter, Pause, Zeit, Bauchbinde, Nachricht, Bereit), Rückmeldungen (Status, Warnfarbe, Gewerk bereit) und Variablen (Titel, Restzeit, Nächster Punkt) mit.</p></details>
+        <details style="margin-top:8px" open><summary class="hint" style="cursor:pointer">Companion-Modul</summary><p class="hint">Modul herunterladen, in Companion unter „Modules → Import module package“ einspielen, Verbindung „Tallycall“ anlegen und den Verbindungscode einfügen. Die Tasten (Presets) entstehen aus deinem Projekt: Vor, Zurück, Zeit, jede Bauchbinde, jedes Gewerk, jeder Tag und jeder Ablaufpunkt. Legst du eine neue Bauchbinde an, erscheint auch ein neues Preset.</p><p class="row2"><a class="btn sm primary" href="/downloads/companion-module-tallycall.tgz" download>Modul herunterladen</a><a class="btn sm ghost" href="/docs/companion" target="_blank">Anleitung</a></p></details>
         <details style="margin-top:8px"><summary class="hint" style="cursor:pointer">OSC-Eingang</summary><p class="hint" id="oscHelp"></p></details>
       </div>
       <div class="card"><h3>So triggerst du Pixera</h3>
@@ -46,7 +56,13 @@ async function loadMeta() {
   $("policy").textContent = { all: "Trigger: alle Adressen (lokaler Server)", public: "Trigger: nur öffentliche Adressen (online)", off: "Trigger: abgeschaltet" }[meta.triggers] || "";
   $("policy").className = "pill " + (meta.triggers === "off" ? "bad" : "ok");
   $("oscHelp").textContent = meta.oscPort ? I18N.t("Aktiv auf UDP-Port {p}. Adresse: /tallycall/{id}/next (auch start, pause, toggle, prev, stop, add, sub, load <id>, ready <gewerk> <ready|wait>, message <text>, lower <id|hide>).", { p: meta.oscPort, id: CL.ctx.pid }) : I18N.t("Nicht aktiv. Beim Start OSC_PORT=9000 setzen (nur für lokale Server sinnvoll).");
-  const base = meta.apiBase;
+  const base = meta.apiBase, host = location.hostname, port = meta.oscPort;
+  $("oscStatus").innerHTML = port ? `<span class="pill ${meta.oscOk ? "ok" : "bad"}">${meta.oscOk ? I18N.t("Eingang aktiv: UDP-Port {p}", { p: port }) : I18N.t("Port {p} konnte nicht geöffnet werden", { p })}</span>` : `<span class="pill">${I18N.t("Eingang aus")}</span> <span class="hint">${I18N.t("Der Server-Admin schaltet den OSC-Port unter Verwaltung → Server ein.")}</span>`;
+  const keyHint = meta.tokens?.length ? meta.tokens[0].prefix + "…" : "tc_SCHLÜSSEL";
+  $("oscAddr").innerHTML = `<b>UDP ${E(host)}:${port || "PORT"}</b>\n/tallycall/<b>${E(keyHint)}</b>/<b>BEFEHL</b> [Argumente]\n\n${E(I18N.t("Beispiel: Weiter"))}:  /tallycall/tc_…/next`;
+  const CMDS = [["next", "", "Nächster Punkt"], ["prev", "", "Vorheriger Punkt"], ["start", "[Punkt-ID]", "Start oder Weiter, mit ID diesen Punkt starten"], ["pause", "", "Pause"], ["toggle", "", "Start/Pause umschalten"], ["stop", "", "Aktuellen Punkt zurücksetzen"], ["add", "Minuten", "Zeit dazugeben (Standard 1)"], ["sub", "Minuten", "Zeit abziehen"], ["load", "Punkt-ID", "Punkt laden ohne zu starten"], ["day", "Tag-ID", "Tag wählen"], ["roll", "0|1", "Roll-Modus"], ["ready", "Gewerk-ID ready|wait|leer", "Bereit-Meldung setzen"], ["readyReset", "", "Alle Bereit-Meldungen löschen"], ["message", "Text [0|1]", "Nachricht anzeigen (0 = ausblenden)"], ["lower", "Bauchbinden-ID | show | hide", "Bauchbinde ein- oder ausblenden"]];
+  $("oscCmds").innerHTML = CMDS.map(([c, a, d]) => `<tr><td class="mono" translate="no">${E(c)}</td><td class="hint" translate="no">${E(a)}</td><td>${E(I18N.t(d))}</td></tr>`).join("");
+  $("oscFb").innerHTML = ["status", "title", "subtitle", "presenter", "next", "day", "level", "running", "message", "lower", "roll", "remaining", "remaining/sec", "elapsed/sec", "progress", "ready/&lt;gewerk&gt;"].map((k) => `/tallycall/<b>${k}</b>`).join("   ");
   $("cmdHelp").innerHTML = ["next", "prev", "start", "pause", "toggle", "stop", "add?min=1", "sub?min=1", "load?id=PUNKT", "day?id=TAG", "roll?on=1", "ready?g=GEWERK&state=ready", "message?text=Hallo&visible=1", "lower?id=BAUCHBINDE", "lower?visible=0"].map((c) => `<b>GET</b> ${E(base)}/cmd/${E(c)}${c.includes("?") ? "&" : "?"}token=SCHLÜSSEL`).join("\n") + `\n\n<b>GET</b> ${E(base)}/status?token=…   (Zustand als JSON)\n<b>GET</b> ${E(base)}/events?token=…   (Live-Strom, SSE)\n<b>POST</b> ${E(base)}/action  Authorization: Bearer SCHLÜSSEL  {"type":"next"}`;
   if (meta.role !== "admin") { $("apiCard").querySelector(".row2").hidden = true; }
   $("tokens").innerHTML = meta.tokens?.length ? meta.tokens.map((t) => `<div class="srow" style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-top:1px solid var(--line)"><span><b translate="no">${E(t.name)}</b> <span class="pill">${t.scope === "read" ? "nur lesen" : "steuern"}</span><div class="hint mono" translate="no">${E(t.prefix)}… · ${t.lastUsed ? I18N.t("zuletzt {t}", { t: new Date(t.lastUsed).toLocaleString(I18N.locale) }) : I18N.t("noch nie benutzt")}</div></span>${meta.role === "admin" ? `<button class="sm danger" data-rev="${E(t.id)}">Widerrufen</button>` : ""}</div>`).join("") : '<p class="hint">Noch kein Schlüssel.</p>';
@@ -57,17 +73,42 @@ function renderLog() {
   $("tlog").innerHTML = l.length ? l.map((x) => `<div><span>${CL.hhmmss(CL.nowParts(x.t, CL.state?.settings.timezone).sec)}</span><span translate="no">${E(x.target)} <span class="pill">${E(x.type)}</span></span><span>${E(x.what)}</span><span class="mono" translate="no" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${E(x.text)}</span><span class="${x.ok === true ? "ok" : x.ok === false ? "bad" : ""}" translate="no">${x.ok === true ? "✓ " : x.ok === false ? "✕ " : "… "}${E(x.info)}</span></div>`).join("") : '<p class="hint">Noch nichts gesendet. Mit „Testen“ an einem Ziel prüfst du die Verbindung.</p>';
 }
 $("logRefresh").onclick = loadMeta;
-$("tkAdd").onclick = async () => { try { const r = await admin({ type: "tokenCreate", name: $("tkName").value || "Companion", scope: $("tkScope").value }); $("tkNew").hidden = false; $("tkNew").innerHTML = `<div class="code" translate="no"><b>${E(r.token)}</b></div><p class="hint" style="color:var(--warn)">Jetzt kopieren. Der Schlüssel wird nur dieses eine Mal angezeigt.</p>`; $("tkName").value = ""; loadMeta(); } catch (_) {} };
+$("tkAdd").onclick = async () => {
+  try {
+    const r = await admin({ type: "tokenCreate", name: $("tkName").value || "Companion", scope: $("tkScope").value });
+    const code = "tc1." + btoa(JSON.stringify({ u: location.origin, p: CL.ctx.pid, k: r.token })).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    $("tkNew").hidden = false;
+    $("tkNew").innerHTML = `<label style="margin-top:0">Verbindungscode für Companion</label><div class="code" translate="no" style="user-select:all"><b>${E(code)}</b></div><div class="row2" style="margin-top:6px"><button class="sm" id="cpCode">Code kopieren</button><button class="sm ghost" id="cpKey">Nur den Schlüssel kopieren</button></div><label>Schlüssel (für OSC und URL-Befehle)</label><div class="code" translate="no"><b>${E(r.token)}</b></div><p class="hint" style="color:var(--warn)">Jetzt kopieren. Code und Schlüssel werden nur dieses eine Mal angezeigt.</p>`;
+    $("cpCode").onclick = async () => UI.toast((await UI.copy(code)) ? I18N.t("Code kopiert") : I18N.t("Kopieren nicht möglich, bitte markieren"), false);
+    $("cpKey").onclick = async () => UI.toast((await UI.copy(r.token)) ? I18N.t("Schlüssel kopiert") : I18N.t("Kopieren nicht möglich, bitte markieren"), false);
+    $("tkName").value = ""; loadMeta();
+  } catch (_) {}
+};
 $("tokens").onclick = (e) => { const b = e.target.closest("[data-rev]"); if (b && confirm(I18N.t("Schlüssel widerrufen? Geräte damit verlieren sofort den Zugriff."))) admin({ type: "tokenRevoke", id: b.dataset.rev }).then(loadMeta); };
 
 const TYPES = [["http", "HTTP"], ["osc", "OSC"], ["tcp", "TCP"], ["udp", "UDP"]];
+// Vorlagen mit üblichen Ports und Beispielnachrichten (Standardwerte, bitte am Gerät prüfen)
+const PRESETS = [
+  { id: "qlab", name: "QLab", type: "osc", port: 53000, hint: "/go · /cue/12/start · /stop · /panic" },
+  { id: "resolume", name: "Resolume Arena", type: "osc", port: 7000, hint: "/composition/layers/1/clips/1/connect 1 · /composition/columns/2/connect 1" },
+  { id: "ma3", name: "grandMA3", type: "osc", port: 8000, hint: '/cmd "Go+ Sequence 1" · /cmd "Goto Cue 5 Sequence 1"' },
+  { id: "eos", name: "ETC Eos", type: "osc", port: 8000, hint: "/eos/cue/1/fire · /eos/cue/1/5/fire · /eos/newcmd \"Go_to_Cue 5#\"" },
+  { id: "reaper", name: "Reaper", type: "osc", port: 8000, hint: "/action/1007 (Play) · /action/1016 (Stop)" },
+  { id: "touchosc", name: "TouchOSC / Anzeige (Feedback)", type: "osc", port: 9000, hint: "Feedback an Port 9000, Adressen siehe unten", feedback: true },
+  { id: "pixera", name: "Pixera (JSON-RPC)", type: "tcp", port: 1400, hint: '{"jsonrpc":"2.0","id":1,"method":"Pixera.Timelines.Timeline.play","params":{"handle":12345}}\\n' },
+  { id: "companion", name: "Companion (HTTP)", type: "http", port: 8000, hint: "http://IP:8000/api/location/1/2/3/press (POST)", url: "http://IP:8000/api/location/1/1/1/press", method: "POST" },
+  { id: "vmix", name: "vMix (HTTP)", type: "http", port: 8088, hint: "http://IP:8088/api/?Function=Cut (GET)", url: "http://IP:8088/api/?Function=Cut", method: "GET" },
+];
+const presetOf = (t) => PRESETS.find((p) => p.name === t.name) || null;
 function renderTargets(s) {
   const list = s.integrations?.targets || [], key = JSON.stringify(list);
   if (key === sig || (document.activeElement && $("targets").contains(document.activeElement) && document.activeElement.matches("input,select"))) return;
   sig = key;
-  $("targets").innerHTML = list.map((t) => `<div class="trow" data-id="${E(t.id)}"><input data-f="name" value="${E(t.name)}" placeholder="Name" translate="no"><select data-f="type">${TYPES.map(([v, l]) => `<option value="${v}"${t.type === v ? " selected" : ""}>${l}</option>`).join("")}</select>
+  $("targets").innerHTML = list.map((t) => `<div class="trow" data-id="${E(t.id)}"><span class="row2" style="gap:6px;flex-wrap:nowrap"><input data-f="name" value="${E(t.name)}" placeholder="Name" translate="no" style="min-width:0"><select data-preset title="Vorlage" style="width:92px"><option value="">Vorlage</option>${PRESETS.map((p) => `<option value="${p.id}">${E(p.name)}</option>`).join("")}</select></span><select data-f="type">${TYPES.map(([v, l]) => `<option value="${v}"${t.type === v ? " selected" : ""}>${l}</option>`).join("")}</select>
     ${t.type === "http" ? `<input data-f="url" value="${E(t.url || "")}" placeholder="https://… (Platzhalter erlaubt)" translate="no">` : `<span class="row2" style="gap:6px"><input data-f="host" value="${E(t.host || "")}" placeholder="Host / IP" translate="no" style="flex:2"><input data-f="port" type="number" min="1" max="65535" value="${t.port || ""}" placeholder="Port" style="flex:1;min-width:80px"></span>`}
     <span class="row2" style="gap:4px"><label class="sw" title="Aktiv"><input type="checkbox" data-f="enabled" ${t.enabled ? "checked" : ""}></label><button class="sm" data-a="test" title="Testnachricht senden">Testen</button><button class="sm ghost stop" data-a="del">✕</button></span>
+    ${t.type === "osc" ? `<div class="sub"><label class="sw"><input type="checkbox" data-f="feedback" ${t.feedback ? "checked" : ""}> Zustand laufend senden (Feedback)</label><input data-f="prefix" value="${E(t.prefix || "/tallycall")}" placeholder="/tallycall" translate="no" ${t.feedback ? "" : "disabled"}><span class="hint">Präfix der Feedback-Adressen</span></div>` : ""}
+    ${(() => { const p = presetOf(t); return p ? `<div class="sub" style="grid-template-columns:1fr"><span class="hint" translate="no">${E(p.hint)}</span></div>` : ""; })()}
     ${t.type === "http" ? `<div class="sub"><select data-f="method"><option${t.method === "GET" ? " selected" : ""}>GET</option><option${t.method !== "GET" && t.method !== "PUT" ? " selected" : ""}>POST</option><option${t.method === "PUT" ? " selected" : ""}>PUT</option></select><input data-f="headers" value="${E(t.headers || "")}" placeholder="Header, z. B. Authorization: Bearer …" translate="no" style="grid-column:span 2"></div>` : ""}</div>`).join("") || '<p class="hint">Noch kein Ziel. Mit „+ Ziel“ beginnen.</p>';
 }
 function renderRules(s) {
@@ -82,7 +123,9 @@ function renderRules(s) {
 }
 $("tAdd").onclick = () => api({ type: "targetAdd" });
 $("rAdd").onclick = () => api({ type: "ruleAdd" });
-$("targets").addEventListener("change", (e) => { const row = e.target.closest("[data-id]"), f = e.target.dataset.f; if (!row || !f) return; sig = ""; api({ type: "targetUpdate", id: row.dataset.id, data: { [f]: e.target.type === "checkbox" ? e.target.checked : e.target.value } }); });
+$("targets").addEventListener("change", (e) => {
+  if (e.target.dataset.preset !== undefined) { const row = e.target.closest("[data-id]"), p = PRESETS.find((x) => x.id === e.target.value); if (!p) return; sig = ""; return api({ type: "targetUpdate", id: row.dataset.id, data: { name: p.name, type: p.type, port: p.port, ...(p.url ? { url: p.url, method: p.method } : {}), ...(p.feedback ? { feedback: true } : {}) } }); }
+  const row = e.target.closest("[data-id]"), f = e.target.dataset.f; if (!row || !f) return; sig = ""; api({ type: "targetUpdate", id: row.dataset.id, data: { [f]: e.target.type === "checkbox" ? e.target.checked : e.target.value } }); });
 $("targets").addEventListener("click", async (e) => { const b = e.target.closest("[data-a]"); if (!b) return; const id = b.closest("[data-id]").dataset.id;
   if (b.dataset.a === "del") { if (confirm(I18N.t("Ziel löschen? Regeln und Trigger, die es nutzen, werden entfernt."))) api({ type: "targetDelete", id }); }
   else if (b.dataset.a === "test") { const t = CL.state.integrations.targets.find((x) => x.id === id); const payload = prompt(I18N.t("Testnachricht an {n}:", { n: t.name }), t.type === "osc" ? "/tallycall/test 1" : t.type === "http" ? '{"event":"test","show":"{show}"}' : "tallycall test\\n"); if (payload == null) return;

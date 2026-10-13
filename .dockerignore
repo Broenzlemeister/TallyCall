@@ -2,7 +2,6 @@
 .github
 data
 backups
-node_modules
-docs
+**/node_modules
 tools/i18n-collected.json
 *.zip

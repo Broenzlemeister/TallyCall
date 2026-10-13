@@ -37,7 +37,7 @@
           </div>
           <p class="hint">Gilt für alle Punkte ohne eigene Einstellung. Im Roll-Modus zählt immer die Uhr.</p>
         </div>
-        <div data-pane="io" hidden><div class="row2"><button id="bExport">Export (JSON)</button><button id="bImport">Import (JSON)</button><input id="file" type="file" accept=".json" hidden></div><p class="hint">Der Export enthält Tage, Punkte, Cues, Gewerke und Einstellungen. Der Import ersetzt den Plan dieses Projekts.</p></div>
+        <div data-pane="io" hidden><div class="row2"><button id="bExport">Export (JSON)</button><button id="bImport">Import (JSON)</button><input id="file" type="file" accept=".json" hidden><a class="btn" id="csvPlan" href="#">Plan (CSV)</a><a class="btn" id="csvAct" href="#">Ist-Zeiten (CSV)</a><button class="ghost stop" id="actReset">Ist-Zeiten zurücksetzen</button></div><p class="hint">Ist-Zeiten werden beim Starten und Beenden der Punkte aufgezeichnet: Plan gegen Wirklichkeit für den Show-Bericht. Die CSV-Dateien öffnen sich direkt in Excel.</p><p class="hint">Der Export enthält Tage, Punkte, Cues, Gewerke und Einstellungen. Der Import ersetzt den Plan dieses Projekts.</p></div>
       </div>
     </section>
     <aside>
@@ -120,6 +120,8 @@ setting("sTz", "timezone", String); setting("sYel", "warnYellow", Number); setti
 $("bExport").onclick = () => { const s = CL.state, p = plan(s), a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([JSON.stringify({ settings: p.settings, gewerke: p.gewerke, days: p.days }, null, 2)], { type: "application/json" })); a.download = "ablauf-" + s.show.name.replace(/\W+/g, "_") + ".json"; a.click(); };
 $("bImport").onclick = () => $("file").click();
+$("csvPlan").href = CL.ctx.api + "/export.csv?kind=plan"; $("csvAct").href = CL.ctx.api + "/export.csv?kind=actual";
+$("actReset").onclick = () => { if (confirm(I18N.t("Alle aufgezeichneten Ist-Zeiten löschen?"))) api({ type: "actualsReset" }).then(() => UI.toast(I18N.t("Ist-Zeiten zurückgesetzt"))); };
 $("file").onchange = async () => { try { await api({ type: "import", data: JSON.parse(await $("file").files[0].text()) }); sig = ""; } catch (e) { UI.toast("Datei ungültig", true); } $("file").value = ""; };
 $("dayCard").addEventListener("change", (e) => { const f = e.target.dataset.f; if (!f) return; let v = e.target.value; if (f === "startTime") v = CL.parseHHMM(v); api({ type: "dayUpdate", id: dayId, data: { [f]: v } }); });
 $("dayCard").addEventListener("click", (e) => {

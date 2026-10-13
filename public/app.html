@@ -1,5 +1,4 @@
 <!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/app.css"><link rel="icon" href="/favicon.svg"><title>Projekte · Tallycall</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
 <style>
 .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px; }
 .proj { display:flex; flex-direction:column; gap:12px; padding:18px; background:var(--bg1); border:1px solid var(--line); border-radius:var(--r); color:var(--fg); text-decoration:none !important; transition:border-color .15s, transform .15s var(--ease), background .15s; min-height:150px; }
@@ -21,13 +20,15 @@
     <div class="row2"><input id="q" placeholder="Suchen …" style="width:200px" hidden><button class="primary" id="bNew">+ Neues Projekt</button></div>
   </div>
   <div id="list" class="grid"></div>
+  <div id="others" hidden style="margin-top:34px"><h2 style="font-size:18px;margin:0 0 4px">Alle Projekte auf dem Server</h2><p class="hint" style="margin:0 0 14px">Nur du als Server-Admin siehst diese Liste. Die Besitzer sehen nur ihre eigenen Projekte.</p><div id="othersList" class="grid"></div></div>
 </div>
+<footer style="max-width:1100px;margin:40px auto 30px;padding:0 18px;display:flex;gap:18px;flex-wrap:wrap;color:var(--mute);font-size:13px"><a href="/impressum">Impressum</a><a href="/datenschutz">Datenschutz</a><a href="/docs/osc">OSC</a><a href="/docs/companion">Companion</a></footer>
 <script src="/i18n.js"></script>
 <script>
 const $ = (i) => document.getElementById(i), E = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const post = async (path, body) => { const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "x-cl": "1" }, body: JSON.stringify(body) }); const j = await r.json().catch(() => ({})); if (r.status === 402 && j.upgrade) document.dispatchEvent(new CustomEvent("cl-upgrade", { detail: j.error })); if (!r.ok) throw new Error(j.error || "Fehler"); return j; };
 const fmt = (d) => d ? new Date(d + "T12:00:00Z").toLocaleDateString(I18N.locale, { timeZone: "UTC" }) : "";
-let me = null, projects = [];
+let me = null, projects = [], others = [];
 function toast(m, bad) { document.querySelectorAll(".toast").forEach((t) => t.remove()); const t = document.createElement("div"); t.className = "toast" + (bad ? " bad" : ""); t.textContent = m; document.body.appendChild(t); setTimeout(() => t.remove(), 3500); }
 function modal(title, html, actions) {
   const bg = document.createElement("div"); bg.className = "modalbg"; bg.innerHTML = `<div class="modal" role="dialog" aria-modal="true"><h2>${E(title)}</h2><div>${html}</div><div class="row2" style="margin-top:16px;justify-content:flex-end"></div></div>`;
@@ -39,6 +40,8 @@ function draw() {
   $("q").hidden = projects.length < 6;
   if (!projects.length) { $("list").className = ""; $("list").innerHTML = `<div class="empty"><h2>Dein erstes Projekt</h2><p class="hint" style="max-width:52ch;margin:0 auto 18px">Lege ein Projekt für deine Show an. Mit Beispieldaten siehst du sofort, wie Tage, Gewerke, Cues und Timeline zusammenspielen.</p><button class="primary lg" data-new="1">+ Projekt anlegen</button></div>`; return; }
   $("list").className = "grid";
+  $("others").hidden = !others.length;
+  $("othersList").innerHTML = others.map((p) => `<a class="proj" href="/p/${E(p.id)}/"><div class="top"><h2 translate="no">${E(p.name)}</h2><span class="badge">Server-Admin</span></div><div class="hint" translate="no">${E(p.owner || "–")}</div>${p.live ? `<div><span class="badge live"><span class="dot on" style="width:6px;height:6px"></span> ${p.live.status === "running" ? "läuft" : p.live.status === "paused" ? "pausiert" : "geladen"}: <span translate="no">${E(p.live.title)}</span></span></div>` : ""}<div class="meta"><span>${p.days} ${p.days === 1 ? "Tag" : "Tage"}</span><span>${p.events} Punkte</span><span>${p.members} ${p.members === 1 ? "Mitglied" : "Mitglieder"}</span></div></a>`).join("");
   $("list").innerHTML = list.map((p) => `<a class="proj" href="/p/${E(p.id)}/"><div class="top"><h2 translate="no">${E(p.name)}</h2><span class="badge ${p.role === "admin" ? "" : ""}">${p.role === "admin" ? "Admin" : "Editor"}</span></div>
     ${p.live ? `<div><span class="badge live"><span class="dot on" style="width:6px;height:6px"></span> ${p.live.status === "running" ? "läuft" : p.live.status === "paused" ? "pausiert" : "geladen"}: <span translate="no">${E(p.live.title)}</span></span></div>` : ""}
     <div class="meta"><span translate="no">${p.firstDate ? fmt(p.firstDate) + (p.lastDate !== p.firstDate ? " – " + fmt(p.lastDate) : "") : "–"}</span><span>${p.days} ${p.days === 1 ? "Tag" : "Tage"}</span><span>${p.events} Punkte</span><span>${p.members} ${p.members === 1 ? "Mitglied" : "Mitglieder"}</span></div></a>`).join("") + `<button class="proj new" data-new="1"><span style="font-size:26px;line-height:1">+</span>Neues Projekt</button>`;
@@ -46,8 +49,8 @@ function draw() {
 function newProject() {
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Berlin";
   modal("Neues Projekt", `<label style="margin-top:0">Name</label><input id="npName" placeholder="z. B. Sommerfest 2026" autofocus><label>Zeitzone der Show</label><input id="npTz" list="tzs" value="${E(tz)}"><datalist id="tzs"><option>Europe/Berlin<option>Europe/Vienna<option>Europe/Zurich<option>Europe/London<option>America/New_York<option>UTC</datalist>
-    <label class="sw" style="margin-top:14px"><input type="checkbox" id="npSample" ${projects.length ? "" : "checked"}> Mit Beispieldaten starten</label>`,
-    [{ label: "Abbrechen" }, { label: "Anlegen", cls: "primary", fn: async (close, bg) => { try { const r = await post("/api/projects", { name: bg.querySelector("#npName").value, timezone: bg.querySelector("#npTz").value, sample: bg.querySelector("#npSample").checked }); location.href = "/p/" + r.id + "/"; } catch (e) { toast(e.message, true); } } }]);
+    <label>Vorlage</label><select id="npTpl"><option value="empty">Leer</option><option value="conference"${projects.length ? "" : " selected"}>Konferenz (Beispiel mit Gruppen, Pause, Cues)</option><option value="concert">Konzert / Live-Show (Aufbau, Einlass, Support, Hauptact)</option></select>`,
+    [{ label: "Abbrechen" }, { label: "Anlegen", cls: "primary", fn: async (close, bg) => { try { const r = await post("/api/projects", { name: bg.querySelector("#npName").value, timezone: bg.querySelector("#npTz").value, template: bg.querySelector("#npTpl").value }); location.href = "/p/" + r.id + "/"; } catch (e) { toast(e.message, true); } } }]);
 }
 function account() {
   if (me.local) return modal("Lokaler Modus", "<p>Dieser Server läuft ohne Konten. Jeder im Netzwerk hat vollen Zugriff.</p>", [{ label: "Schließen", cls: "primary" }]);
@@ -55,13 +58,20 @@ function account() {
     [{ label: "Abmelden", cls: "danger", fn: async () => { await post("/api/logout", {}); location.href = "/"; } }, { label: "Abbrechen" }, { label: "Speichern", cls: "primary", fn: async (close, bg) => {
       try { const body = { name: bg.querySelector("#acName").value }; const n = bg.querySelector("#acNew").value; if (n) { body.password = n; body.current = bg.querySelector("#acCur").value; } const r = await post("/api/account", body); me = r.user; paintUser(); close(); toast("Gespeichert"); } catch (e) { toast(e.message, true); } } }]);
 }
+function upgrade() {
+  if (!me.enforced || me.local) return;
+  if (me.plan === "pro") return toast(I18N.t("Du hast bereits Pro."));
+  const cur = { EUR: "€", USD: "$", GBP: "£", CHF: "CHF" }[me.price?.currency] || me.price?.currency || "", price = me.price ? `${me.price.amount} ${cur}` : "";
+  let link = me.payLink || ""; try { const u = new URL(link); if (/stripe\.com$/.test(u.hostname)) { u.searchParams.set("prefilled_email", me.email); link = u.toString(); } } catch (_) {}
+  modal("Tallycall Pro", `<p style="margin-top:0"><b style="font-size:22px">${E(price)}</b> <span class="hint">pro Monat${me.price?.note ? " · " + E(me.price.note) : ""}</span></p><ul class="hint" style="padding-left:18px;margin:0 0 12px;line-height:1.7"><li>Unbegrenzt Projekte, Tage und Freigabe-Links</li><li>Trigger (HTTP, OSC, TCP, UDP), API-Schlüssel, OSC-Eingang</li><li>Companion-Modul für das Stream Deck</li></ul>${link ? `<p class="hint">Bitte beim Bezahlen die E-Mail-Adresse deines Kontos verwenden: <b translate="no">${E(me.email)}</b>. Pro wird danach automatisch freigeschaltet.</p>` : '<p class="hint">Dieser Server hat noch keine Bezahlung eingerichtet. Bitte den Betreiber kontaktieren.</p>'}`, [{ label: "Später" }, ...(link ? [{ label: "Jetzt zu Pro wechseln", cls: "primary", fn: () => { window.open(link, "_blank"); } }] : [])]);
+}
 function paintUser() {
   $("uiUser").textContent = (me.name || "?").slice(0, 1).toUpperCase(); $("greet").textContent = me.local ? "Lokaler Modus" : `Angemeldet als ${me.name}`;
   $("adminLink").hidden = !me.siteAdmin || me.local;
-  if (me.enforced && !me.local) { const p = $("planPill"); p.hidden = false; p.className = "pill " + (me.plan === "pro" ? "pro" : ""); p.innerHTML = me.plan === "pro" ? "Pro" + (me.until ? ` <span class="hint">${I18N.t("bis {d}", { d: new Date(me.until).toLocaleDateString(I18N.locale) })}</span>` : "") : `Free ${me.payLink ? `· <a href="${E(me.payLink)}" target="_blank">${I18N.t("Auf Pro wechseln")}</a>` : ""}`; }
+  if (me.enforced && !me.local) { const p = $("planPill"); p.hidden = false; p.className = "pill " + (me.plan === "pro" ? "pro" : ""); p.innerHTML = me.plan === "pro" ? "Pro" + (me.until ? ` <span class="hint">${I18N.t("bis {d}", { d: new Date(me.until).toLocaleDateString(I18N.locale) })}</span>` : "") : `Free ${me.payLink ? `· <a href="#" id="upLink">${I18N.t("Auf Pro wechseln")}</a>` : ""}`; if ($("upLink")) $("upLink").onclick = (e) => { e.preventDefault(); upgrade(); }; }
 }
-document.addEventListener("cl-upgrade", (e) => modal("Pro-Plan nötig", `<p>${E(e.detail)}</p>${me?.payLink ? "" : '<p class="hint">Dieser Server hat noch keine Bezahlung eingerichtet. Bitte den Betreiber kontaktieren.</p>'}`, [{ label: "Schließen" }, ...(me?.payLink ? [{ label: "Auf Pro wechseln", cls: "primary", fn: () => window.open(me.payLink, "_blank") }] : [])]));
+document.addEventListener("cl-upgrade", (e) => { toast(e.detail, true); setTimeout(upgrade, 600); });
 $("list").addEventListener("click", (e) => { if (e.target.closest("[data-new]")) newProject(); });
 $("bNew").onclick = newProject; $("uiUser").onclick = account; $("q").oninput = draw;
-fetch("/api/me").then(async (r) => { if (r.status === 401) { location.href = "/login?next=/app"; return; } const j = await r.json(); me = j.user; projects = j.projects; paintUser(); draw(); });
+fetch("/api/me").then(async (r) => { if (r.status === 401) { location.href = "/login?next=/app"; return; } const j = await r.json(); me = j.user; projects = j.projects; others = j.others || []; paintUser(); draw(); if (new URLSearchParams(location.search).get("upgrade") === "1") upgrade(); });
 </script></body></html>

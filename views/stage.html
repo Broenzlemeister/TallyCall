@@ -20,6 +20,8 @@ CL.run((s) => {
   $("clock").textContent = CL.hhmmss(CL.clock(s).sec);
   $("time").textContent = c ? CL.fmt(CL.remaining(s)) : "--:--";
   $("time").className = "bigtime lv-" + (c && s.runtime.status !== "paused" ? lv : "ok");
+  const day0 = CL.viewDay(s), pre = !c && day0 && day0.date === CL.clock(s).date ? CL.schedule(day0).find((r) => !r.group && !r.skip) : null, until = pre ? pre.start - CL.clockExact(s) : 0;
+  if (pre && until > 0) { $("time").textContent = CL.fmt(until * 1000, { hours: until >= 3600 }); $("time").className = "bigtime lv-ok"; $("title").textContent = I18N.t("Beginn in"); $("sub").textContent = pre.e.title + " · " + CL.hhmm(pre.start); $("brk").hidden = true; $("next").textContent = "–"; $("bar").style.width = "0"; $("msg").hidden = !(s.message.visible && s.message.text); $("msg").textContent = s.message.text; return; }
   $("title").textContent = c ? c.title : "Bereit";
   $("brk").hidden = !(c && c.type === "break");
   const pr = c && c.type === "break" ? CL.projection(s).find((x) => x.e.id === c.id) : null;

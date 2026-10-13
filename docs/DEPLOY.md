@@ -10,9 +10,9 @@ Ziel: Jeder Push auf `main` testet den Code in GitHub Actions und lädt ihn dana
 ## 1. VPS einmalig einrichten
 Per SSH als root auf dem VPS (Repo öffentlich):
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Broenzlemeister/tallycall/main/deploy/bootstrap.sh | bash -s -- --domain tallycall.com
+curl -fsSL https://raw.githubusercontent.com/Broenzlemeister/tallycall/main/deploy/bootstrap.sh | bash -s -- --domain tallycall.com --admin-email deine@adresse.de
 ```
-Bei einem **privaten Repo** lädst du `deploy/bootstrap.sh` per `scp deploy/bootstrap.sh root@DEINE-IP:` hoch und startest `bash bootstrap.sh --domain tallycall.com`.
+Bei einem **privaten Repo** lädst du `deploy/bootstrap.sh` per `scp deploy/bootstrap.sh root@DEINE-IP:` hoch und startest `bash bootstrap.sh --domain tallycall.com --admin-email deine@adresse.de`.
 
 Das Skript installiert Docker, schaltet die Firewall auf 22/80/443, aktiviert Sicherheitsupdates und fail2ban, legt den Benutzer `deploy` an und richtet das tägliche Backup ein. Danach holt es den Code selbst aus GitHub nach `/opt/tallycall`, erzeugt die `.env` und startet Tallycall.
 
@@ -62,3 +62,9 @@ Statt Let's Encrypt kannst du ein vorhandenes Zertifikat nutzen:
 2. In `/opt/tallycall/.env` eintragen: `CADDYFILE=Caddyfile.cert`
 3. `cd /opt/tallycall && docker compose up -d`
 Das Zertifikat muss `tallycall.com` und `www.tallycall.com` abdecken (`*.tallycall.com` allein deckt die Hauptdomain nicht ab). Bei Verlängerung die Dateien ersetzen und `docker compose restart caddy` ausführen.
+
+## Server-Admin, Preise und Rechtliches
+- **Server-Admin:** Trage in `/opt/tallycall/.env` `ADMIN_EMAIL=deine@adresse.de` ein (das Setup-Skript macht das mit `--admin-email`). Nur diese Adresse sieht die Verwaltung (`/admin`), alle Projekte und alle Käufe. Alle anderen sehen nur eigene und mit ihnen geteilte Projekte. Danach `cd /opt/tallycall && docker compose up -d`.
+- **Preis und Zahlung:** Unter *Verwaltung → Einstellungen* Preis (7,99 EUR), Hinweistext und den Stripe-Zahlungslink eintragen. In Stripe ein monatliches Produkt anlegen, einen Payment Link erzeugen, das Kundenportal aktivieren (damit Kunden selbst kündigen) und einen Webhook auf `https://tallycall.com/api/stripe/webhook` mit dem Ereignis `invoice.paid` anlegen. Das Signatur-Geheimnis kommt als `STRIPE_WEBHOOK_SECRET` in die `.env`.
+- **Impressum und Datenschutz:** Unter *Verwaltung → Rechtliches* deine Angaben eintragen. Die Seiten `/impressum` und `/datenschutz` entstehen daraus (Deutsch und Englisch). Das sind Vorlagen, keine Rechtsberatung. Bei Verkauf an Verbraucher kommen ggf. AGB und Widerrufsbelehrung dazu.
+- **OSC:** Port unter *Verwaltung → Einstellungen* setzen, siehe [`docs/OSC.md`](OSC.md).
