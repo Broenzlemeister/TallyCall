@@ -6,3 +6,4 @@ backups/
 integrations/companion/node_modules/
 integrations/companion/*.tgz
 integrations/companion/pkg/
+packages/

@@ -5,11 +5,16 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node tools/i18n-check.js && node tools/smoke.js && node tools/test-companion.js"
+    "test": "node tools/i18n-check.js && node tools/smoke.js && node tools/test-companion.js && node tools/test-license.js"
   },
   "engines": {
     "node": ">=18"
   },
   "license": "UNLICENSED",
-  "private": true
+  "private": true,
+  "devDependencies": {
+    "bytenode": "^1.7.0",
+    "esbuild": "^0.28.2",
+    "javascript-obfuscator": "^5.9.0"
+  }
 }

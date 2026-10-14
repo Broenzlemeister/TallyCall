@@ -1,7 +1,8 @@
-.git
-.github
+node_modules
 data
+.git
 backups
-**/node_modules
-tools/i18n-collected.json
-*.zip
+.env
+dist
+*.tgz
+integrations/companion/node_modules

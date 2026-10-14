@@ -11,6 +11,7 @@ const auth = require("./lib/auth.js");
 const Trig = require("./lib/triggers.js");
 const Legal = require("./lib/legal.js");
 const Md = require("./lib/md.js");
+const License = require("./lib/license.js");
 
 const PORT = Number(process.env.PORT) || 4001;
 const HOST = process.env.HOST || "0.0.0.0";
@@ -22,8 +23,11 @@ const PUBLIC_URL = (process.env.PUBLIC_URL || "").replace(/\/$/, "");
 // Trigger-Politik: all (jede Adresse, lokaler Betrieb) | public (nur öffentliche Adressen, online) | off
 const TRIGGERS = process.env.TALLYCALL_TRIGGERS || (AUTH_ON ? "public" : "all");
 const OSC_ENV = Number(process.env.OSC_PORT) || 0; // OSC-Eingang, 0 = aus (änderbar unter Verwaltung → Server)
-// Lizenzen: on = Free/Pro mit Grenzen, off = alles frei. Server-Admins haben immer Pro.
-const PLANS = (process.env.TALLYCALL_PLANS || (AUTH_ON ? "on" : "off")) === "on";
+// Kundenversion: tools/build-dist.js setzt TC_BUILD ({ pub, issuer, buy }) fest in den Code. Im Quelltext (Online-Dienst, Entwicklung) ist es null.
+const BUILD = typeof TC_BUILD !== "undefined" ? TC_BUILD : null;
+const DIST = !!BUILD;
+// Lizenzen: on = Free/Pro mit Grenzen, off = alles frei. Server-Admins haben immer Pro. Die Kundenversion braucht immer einen Lizenzschlüssel.
+const PLANS = DIST || (process.env.TALLYCALL_PLANS || (AUTH_ON ? "on" : "off")) === "on";
 const PAY_LINK_ENV = process.env.PAY_LINK || ""; // z. B. Stripe Payment Link (änderbar unter Verwaltung → Server)
 const PLAN_MONTHS = Number(process.env.PLAN_MONTHS) || 1; // Laufzeit je Zahlung (Monatsabo)
 const PLAN_GRACE = 3 * 86400000; // Nachfrist nach Ablauf, bis die Verlängerung eintrifft
@@ -41,7 +45,7 @@ const site = (() => {
   return { ...d, ...s, legal: { ...d.legal, ...(s.legal || {}) }, price: { ...d.price, ...(s.price || {}) } };
 })();
 const saveSite = () => store.saveSite(site);
-const payLink = () => site.payLink || PAY_LINK_ENV;
+const payLink = () => (DIST && BUILD.buy) || site.payLink || PAY_LINK_ENV;
 const portalLink = () => site.portalLink || process.env.PORTAL_LINK || "";
 const signupOpen = () => (site.signup == null ? SIGNUP_ENV : !!site.signup);
 const oscPortNow = () => (site.oscPort != null && site.oscPort !== "" ? Number(site.oscPort) || 0 : OSC_ENV);
@@ -84,12 +88,80 @@ const isMember = (h, user) => !!user && h.meta.members.some((m) => m.userId === 
 const roleIn = (h, user) => (!AUTH_ON ? "admin" : user ? h.meta.members.find((m) => m.userId === user.id)?.role || (isSiteAdmin(user) ? "admin" : null) : null);
 const touch = (h) => { h.meta.updated = Date.now(); store.saveProject(h); };
 
+// ---------- Lizenzschlüssel (Kundenversion) und Lizenzserver ----------
+const licInst = License.loadInstance(DATA);
+const lic = store.loadJson("license.json", {}); // { key, checked, revoked, msg }
+if (!lic.key && process.env.TALLYCALL_LICENSE) lic.key = String(process.env.TALLYCALL_LICENSE).trim();
+let licMemo = null;
+const licSave = () => { licMemo = null; store.saveJson("license.json", lic); };
+function licState() {
+  if (!DIST) return { state: "online", pro: true };
+  if (licMemo && Date.now() - licMemo.t < 30000) return licMemo.v;
+  let v;
+  if (lic.revoked) v = { state: "revoked", pro: false, reason: lic.msg || "Die Lizenz wurde gesperrt" };
+  else {
+    const r = lic.key ? License.verify(lic.key, BUILD.pub, { instance: licInst.id }) : null;
+    if (r && r.ok) v = { state: r.state, pro: true, payload: r.payload, daysLeft: r.daysLeft };
+    else if (r) v = { state: r.state, pro: false, payload: r.payload, reason: r.reason };
+    else { const t = License.trial(licInst); v = t.active ? { state: "trial", pro: true, daysLeft: t.daysLeft } : { state: "none", pro: false }; }
+  }
+  licMemo = { t: Date.now(), v }; return v;
+}
+// Anfrage an den Lizenzserver: Sperrung, Verlängerung (neuer Schlüssel) und Bindung an diese Installation
+function licCheck() {
+  if (!DIST || !lic.key || !BUILD.issuer) return Promise.resolve();
+  const u = new URL(BUILD.issuer.replace(/\/$/, "") + "/api/license/check"), body = JSON.stringify({ key: lic.key, instance: licInst.id, version: require("./package.json").version });
+  return new Promise((resolve) => {
+    const rq = (u.protocol === "https:" ? require("https") : http).request(u, { method: "POST", timeout: 8000, headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) } }, (r) => {
+      let t = ""; r.on("data", (c) => (t += c)); r.on("end", () => {
+        try {
+          const j = JSON.parse(t); lic.checked = Date.now();
+          if (j.revoked || j.invalid || j.reason === "instance") { lic.revoked = true; lic.msg = j.message || j.reason || "Die Lizenz wurde gesperrt"; }
+          else if (j.ok) { lic.revoked = false; lic.msg = ""; if (j.key && License.verify(j.key, BUILD.pub, { instance: licInst.id }).ok) lic.key = j.key; }
+          licSave();
+        } catch (_) {}
+        resolve();
+      });
+    });
+    rq.on("error", () => resolve()); rq.on("timeout", () => { rq.destroy(); resolve(); }); rq.end(body);
+  });
+}
+if (DIST) { setTimeout(licCheck, 20000).unref(); setInterval(licCheck, 12 * 3600000).unref(); }
+// Lizenzserver (nur dort, wo der private Schlüssel liegt)
+let ISSUER_PRIV = (process.env.LICENSE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
+const ISSUER_FILE = path.join(DATA, "license-private.pem");
+if (!ISSUER_PRIV) { try { ISSUER_PRIV = fs.readFileSync(ISSUER_FILE, "utf8"); } catch (_) {} }
+const issuerPub = () => (ISSUER_PRIV ? License.publicFrom(ISSUER_PRIV) : "");
+const licRecords = (store.loadJson("licenses.json", { records: [] }).records) || [];
+const saveRecords = () => store.saveJson("licenses.json", { records: licRecords });
+const recKey = (r) => License.sign({ id: r.id, name: r.customer, email: r.email, exp: r.until || 0, max: r.max || 1, inst: r.inst || "" }, ISSUER_PRIV);
+const checkHits = new Map();
+function licenseCheck(req, res, ip) {
+  if (!ISSUER_PRIV) return send(res, 404, { error: "Kein Lizenzserver" });
+  const n = (checkHits.get(ip) || []).filter((t) => Date.now() - t < 60000); n.push(Date.now()); checkHits.set(ip, n);
+  if (n.length > 20) return send(res, 429, { error: "Zu viele Anfragen" });
+  return readBody(req, 20000).then((d) => {
+    const v = License.verify(d.key, issuerPub(), { instance: "" }), rec = v.payload && licRecords.find((r) => r.id === v.payload.id);
+    if (!rec || (!v.ok && v.state !== "expired")) return send(res, 200, { ok: false, invalid: true, message: "Der Lizenzschlüssel ist ungültig" });
+    if (rec.revoked) return send(res, 200, { ok: false, revoked: true, message: "Die Lizenz wurde gesperrt. Bitte beim Anbieter melden." });
+    const instance = String(d.instance || "").slice(0, 40), now = Date.now();
+    let slot = rec.instances.find((x) => x.id === instance);
+    if (!slot) {
+      if (rec.instances.length >= (rec.max || 1)) return send(res, 200, { ok: false, reason: "instance", message: "Dieser Schlüssel ist bereits auf der erlaubten Anzahl Installationen aktiv." });
+      slot = { id: instance, first: now, last: now, version: "" }; rec.instances.push(slot);
+    }
+    slot.last = now; slot.version = String(d.version || "").slice(0, 20); rec.lastSeen = now; saveRecords();
+    const renew = rec.until !== (Number(v.payload.exp) || 0) && (!rec.until || rec.until > (Number(v.payload.exp) || 0));
+    return send(res, 200, { ok: true, until: rec.until, ...(renew ? { key: License.sign({ id: rec.id, name: rec.customer, email: rec.email, exp: rec.until, max: rec.max || 1, inst: v.payload.inst || "" }, ISSUER_PRIV) } : {}) });
+  }).catch((e) => send(res, 400, { error: e.message }));
+}
+
 // ---------- Lizenzen ----------
 // Mit ADMIN_EMAIL sind nur diese Adressen Server-Admin. Ohne die Variable gilt das Flag am Konto (das erste Konto bekommt es).
 const isSiteAdmin = (u) => !!u && (!!u.local || (ADMIN_EMAILS.length ? ADMIN_EMAILS.includes(String(u.email).toLowerCase()) : !!u.siteAdmin));
-const planOf = (u) => (!PLANS || isSiteAdmin(u) || (u && u.plan === "pro" && (!u.planUntil || u.planUntil + PLAN_GRACE > Date.now())) ? "pro" : "free");
+const planOf = (u) => (DIST ? (licState().pro ? "pro" : "free") : !PLANS || isSiteAdmin(u) || (u && u.plan === "pro" && (!u.planUntil || u.planUntil + PLAN_GRACE > Date.now())) ? "pro" : "free");
 const limits = (u) => LIMITS[planOf(u)];
-const planInfo = (u) => ({ plan: planOf(u), until: u?.planUntil || 0, enforced: PLANS, payLink: payLink(), portalLink: portalLink(), price: site.price, limits: { ...limits(u), projects: isFinite(limits(u).projects) ? limits(u).projects : 0, days: isFinite(limits(u).days) ? limits(u).days : 0, shares: isFinite(limits(u).shares) ? limits(u).shares : 0 } });
+const planInfo = (u) => ({ plan: planOf(u), until: u?.planUntil || 0, enforced: PLANS, license: DIST ? (({ state, daysLeft }) => ({ state, daysLeft }))(licState()) : null, payLink: payLink(), portalLink: portalLink(), price: site.price, limits: { ...limits(u), projects: isFinite(limits(u).projects) ? limits(u).projects : 0, days: isFinite(limits(u).days) ? limits(u).days : 0, shares: isFinite(limits(u).shares) ? limits(u).shares : 0 } });
 // Plan-Grenzen gelten nach dem Besitzer des Projekts (erster Admin), nicht nach der Person, die gerade arbeitet
 const ownerOf = (h) => { const m = h.meta.members.find((x) => x.role === "admin"); return m ? userById(m.userId) : null; };
 const limitsOf = (h, fallback) => limits(ownerOf(h) || fallback);
@@ -285,6 +357,7 @@ async function api(req, res, url, segs, user) {
   if (a === "health") return send(res, 200, { ok: true });
   if (a === "config") return send(res, 200, { auth: AUTH_ON, signup: signupOpen(), plans: PLANS, payLink: payLink(), portalLink: portalLink(), price: site.price });
   if (a === "stripe" && b === "webhook" && post) return stripeWebhook(req, res);
+  if (a === "license" && b === "check" && post) return licenseCheck(req, res, ip);
 
   // Projekt-API mit Schlüssel (Companion, Stream Deck): kein Cookie, kein CSRF-Header nötig
   if (a === "p" && hosts.get(b)) {
@@ -561,6 +634,11 @@ async function siteAdminApi(req, res, segs, user, url) {
     const kind = url.searchParams.get("kind") === "impressum" ? "impressum" : "privacy", lang = url.searchParams.get("lang") === "en" ? "en" : "de";
     return send(res, 200, { html: kind === "impressum" ? Legal.impressum(site.legal, lang) : Legal.privacy(site.legal, lang, { domain: legalDomain(), plans: PLANS }) });
   }
+  if (a === "license") {
+    const st = licState(), mask = (k) => (k ? k.slice(0, 10) + "…" + k.slice(-6) : "");
+    return send(res, 200, { dist: DIST, state: st.state, pro: st.pro, reason: st.reason || "", daysLeft: st.daysLeft ?? null, customer: st.payload?.name || "", email: st.payload?.email || "", until: st.payload?.exp || 0, key: mask(lic.key), checked: lic.checked || 0, instance: licInst.id, buy: BUILD?.buy || "", issuer: { enabled: !!ISSUER_PRIV, pub: issuerPub(), url: PUBLIC_URL },
+      records: ISSUER_PRIV ? licRecords.map((r) => ({ ...r })).sort((x, y) => y.created - x.created) : [] });
+  }
   if (a === "overview") {
     const now = Date.now(), live = [...hosts.values()].filter((h) => h.state.runtime.status === "running").length;
     const revenue = purchases.reduce((n, p) => n + (Number(p.amount) || 0), 0);
@@ -575,6 +653,36 @@ async function siteAdminApi(req, res, segs, user, url) {
   }
   if (!post) return send(res, 404, { error: "Nicht gefunden" });
   const d = await readBody(req), u = userById(d.userId);
+  if (a === "license-init") {
+    if (DIST || ISSUER_PRIV) return send(res, 400, { error: "Es gibt bereits einen Lizenzschlüssel-Generator" });
+    const kp = License.generateKeyPair(); fs.mkdirSync(DATA, { recursive: true }); fs.writeFileSync(ISSUER_FILE, kp.priv, { mode: 0o600 }); ISSUER_PRIV = kp.priv;
+    return send(res, 200, { ok: true, pub: kp.pub });
+  }
+  if (a.startsWith("license-") && a !== "license-activate" && a !== "license-check") {
+    if (!ISSUER_PRIV) return send(res, 400, { error: "Auf diesem Server ist keine Lizenzausstellung eingerichtet" });
+    const rec = licRecords.find((r) => r.id === d.id), mo = (n) => Math.max(0, Math.min(120, Number(n) || 0));
+    if (a === "license-issue") {
+      const customer = String(d.customer || "").trim().slice(0, 80); if (!customer) return send(res, 400, { error: "Bitte den Kundennamen eingeben" });
+      const months = mo(d.months), r = { id: auth.id(5), customer, email: String(d.email || "").trim().toLowerCase().slice(0, 120), note: String(d.note || "").slice(0, 200), created: Date.now(), until: months ? Date.now() + months * 30.44 * 86400000 : 0, max: Math.max(1, Math.min(50, Number(d.max) || 1)), inst: String(d.inst || "").trim().slice(0, 40), instances: [], revoked: false, lastSeen: 0 };
+      licRecords.unshift(r); saveRecords();
+      return send(res, 200, { ok: true, id: r.id, key: recKey(r) });
+    }
+    if (!rec) return send(res, 404, { error: "Lizenz nicht gefunden" });
+    if (a === "license-key") return send(res, 200, { ok: true, key: recKey(rec) });
+    if (a === "license-extend") { if (rec.until) { rec.until = Math.max(Date.now(), rec.until) + mo(d.months || 1) * 30.44 * 86400000; saveRecords(); } return send(res, 200, { ok: true, key: recKey(rec) }); }
+    if (a === "license-revoke") { rec.revoked = !!d.revoked; saveRecords(); return send(res, 200, { ok: true }); }
+    if (a === "license-reset") { rec.instances = []; saveRecords(); return send(res, 200, { ok: true }); }
+    if (a === "license-delete") { licRecords.splice(licRecords.indexOf(rec), 1); saveRecords(); return send(res, 200, { ok: true }); }
+  }
+  if (a === "license-activate") {
+    if (!DIST) return send(res, 400, { error: "Diese Version braucht keinen Lizenzschlüssel" });
+    const v = License.verify(d.key, BUILD.pub, { instance: licInst.id });
+    if (!v.ok && v.state !== "expired") return send(res, 400, { error: v.reason || "Der Lizenzschlüssel ist ungültig" });
+    lic.key = String(d.key).replace(/\s+/g, ""); lic.revoked = false; lic.msg = ""; licSave();
+    await licCheck();
+    return send(res, 200, { ok: true });
+  }
+  if (a === "license-check") { await licCheck(); return send(res, 200, { ok: true }); }
   if (a === "settings") {
     if ("payLink" in d) { const v = String(d.payLink || "").trim().slice(0, 300); if (v && !/^https:\/\//.test(v)) return send(res, 400, { error: "Der Zahlungslink muss mit https:// beginnen" }); site.payLink = v; }
     if ("portalLink" in d) { const v = String(d.portalLink || "").trim().slice(0, 300); if (v && !/^https:\/\//.test(v)) return send(res, 400, { error: "Der Kundenportal-Link muss mit https:// beginnen" }); site.portalLink = v; }
@@ -678,7 +786,7 @@ function startOsc() {
   if (!port) return;
   oscSock = Trig.listenOsc(port, oscCommand, { onReady: () => { oscState.ok = true; console.log(`  OSC-Eingang auf UDP ${port} (/tallycall/<schlüssel>/<befehl>)`); }, onError: (e) => { oscState.ok = false; oscState.error = e.message; console.error("OSC-Eingang:", e.message); } });
 }
-if (require.main === module) startOsc();
+if (require.main === module || process.env.TC_BOOT === "1") startOsc();
 
 // ---------- Rechtliche Seiten und Exporte ----------
 const legalDomain = () => { try { return new URL(PUBLIC_URL).hostname; } catch (_) { return ""; } };
@@ -771,7 +879,7 @@ const server = http.createServer((req, res) => {
   });
 });
 const lanUrls = () => Object.values(os.networkInterfaces()).flat().filter((i) => i && (i.family === "IPv4" || i.family === 4) && !i.internal).map((i) => `http://${i.address}:${PORT}`);
-if (require.main === module) server.listen(PORT, HOST, () => {
+if (require.main === module || process.env.TC_BOOT === "1") server.listen(PORT, HOST, () => {
   console.log(`Tallycall läuft auf Port ${PORT} (${hosts.size} Projekt${hosts.size === 1 ? "" : "e"}, Daten: ${DATA})`);
   for (const u of lanUrls()) console.log(`  im Netzwerk: ${u}`);
   console.log(AUTH_ON ? `  Konten: an${signupOpen() ? " (Registrierung offen, ALLOW_SIGNUP=0 schließt sie)" : " (Registrierung geschlossen)"}, Lizenzen: ${PLANS ? "an" : "aus"}` : "  ACHTUNG: lokaler Modus ohne Login. Jeder im Netzwerk kann alles ändern. Online nie so betreiben.");

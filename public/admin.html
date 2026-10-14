@@ -13,7 +13,7 @@
 <div class="wrap" style="max-width:1300px">
   <div class="stat" id="stats"></div>
   <div class="card" style="margin-top:14px">
-    <div class="ptabs"><button data-tab="u">Nutzer</button><button data-tab="k">Käufe</button><button data-tab="p">Projekte</button><button data-tab="s">Einstellungen</button><button data-tab="l">Rechtliches</button><button data-tab="c">Hilfe</button></div>
+    <div class="ptabs"><button data-tab="u">Nutzer</button><button data-tab="k">Käufe</button><button data-tab="p">Projekte</button><button data-tab="s">Einstellungen</button><button data-tab="l">Rechtliches</button><button data-tab="z">Lizenz</button><button data-tab="c">Hilfe</button></div>
     <div data-pane="u">
       <div class="row2" style="margin-bottom:10px"><input id="q" placeholder="Suchen (Name, E-Mail)" style="max-width:280px"><select id="fPlan" style="width:auto"><option value="">Alle Pläne</option><option value="pro">Pro</option><option value="free">Free</option></select><span class="hint">Pro-Plan ohne Ablauf = unbegrenzt. Server-Admins haben immer Pro.</span></div>
       <table class="tbl"><thead><tr><th>Nutzer</th><th>Plan</th><th>Projekte</th><th>Registriert</th><th>Zuletzt aktiv</th><th class="r">Aktionen</th></tr></thead><tbody id="users"></tbody></table>
@@ -71,6 +71,9 @@
         <label class="sw"><input type="checkbox" data-l="useCustomPrivacy"> Eigene Datenschutzerklärung verwenden</label>
         <textarea data-l="customPrivacy" rows="8" style="font-family:var(--mono);font-size:12.5px"></textarea><p class="row2" style="margin:6px 0 0"><button class="sm" data-load="privacy">Vorlage laden (Deutsch)</button></p>
       </details>
+    </div>
+    <div data-pane="z" hidden>
+      <div id="licBox"><p class="hint">Wird geladen …</p></div>
     </div>
     <div data-pane="c" hidden>
       <h3 style="margin-top:0">Bezahlung einrichten</h3>
@@ -154,4 +157,52 @@ $("users").onclick = async (e) => {
   } catch (err) { toast(err.message, true); }
 };
 load();
-</script></body></html>
+</script><script>
+// Reiter „Lizenz“: Status dieser Installation, Aktivierung (Kundenversion) und Lizenzausstellung (Lizenzserver)
+(() => {
+  const ST = { online: ["Online-Dienst", "Diese Version braucht keinen Schlüssel."], valid: ["Lizenziert", ""], grace: ["Nachfrist", "Die Lizenz ist abgelaufen. Bitte verlängern."], expired: ["Abgelaufen", ""], revoked: ["Gesperrt", ""], trial: ["Testphase", ""], none: ["Keine Lizenz", "Es gelten die Free-Grenzen."], invalid: ["Ungültig", ""], instance: ["Falsche Installation", ""] };
+  let L = null;
+  const box = $("licBox"), dd = (t) => (t ? new Date(t).toLocaleDateString("de-DE") : "unbefristet");
+  async function get() { const r = await fetch("/api/admin/license"); if (r.ok) { L = await r.json(); draw(); } }
+  const run = (path, body, msg) => post(path, body).then((j) => { if (msg) toast(msg); return get().then(() => j); }).catch((e) => toast(e.message, true));
+  function draw() {
+    const [name, note] = ST[L.state] || [L.state, ""];
+    let h = `<h3 style="margin-top:0">Diese Installation</h3><div class="row2" style="align-items:center;gap:14px"><span class="pill ${L.pro ? "pro" : ""}">${E(name)}</span><span class="hint">${E(L.reason || note)}${L.state === "trial" ? ` Noch ${L.daysLeft} Tage mit allen Funktionen.` : ""}${L.customer ? ` Kunde: <b translate="no">${E(L.customer)}</b>.` : ""}${L.dist && L.state !== "trial" && L.state !== "none" ? ` Gültig bis ${dd(L.until)}.` : ""}</span></div>`;
+    if (L.dist) {
+      h += `<p class="hint">Installations-ID: <code translate="no">${E(L.instance)}</code>${L.key ? ` · Schlüssel <code translate="no">${E(L.key)}</code>` : ""}${L.checked ? ` · letzter Abgleich ${new Date(L.checked).toLocaleString("de-DE")}` : ""}</p>
+      <label>Lizenzschlüssel</label><textarea id="licKey" rows="3" placeholder="TC1-…" style="font-family:var(--mono);font-size:12.5px"></textarea>
+      <div class="row2" style="margin-top:10px"><button class="primary" id="licAct">Aktivieren</button><button id="licChk">Jetzt abgleichen</button>${L.buy ? `<a class="btn" href="${E(L.buy)}" target="_blank" rel="noopener">Lizenz kaufen</a>` : ""}</div>`;
+    }
+    if (!L.dist) {
+      h += `<h3 style="margin-top:26px">Lizenzen für lokale Kunden</h3>`;
+      if (!L.issuer.enabled) h += `<p class="hint">Hier lassen sich Lizenzschlüssel für Kunden ausstellen, die Tallycall selbst hosten. Dafür wird einmalig ein Schlüsselpaar erzeugt. Der private Teil bleibt auf diesem Server (Datenordner, Datei <code>license-private.pem</code>) und gehört in deine Datensicherung. Wer ihn hat, kann Lizenzen ausstellen.</p><button class="primary" id="licInit">Lizenzausstellung einrichten</button>`;
+      else {
+        h += `<form id="licForm" class="row2" style="align-items:flex-end;gap:10px;flex-wrap:wrap"><div><label style="margin-top:0">Kunde</label><input id="lcName" required placeholder="Firma / Name" style="width:200px"></div><div><label style="margin-top:0">E-Mail</label><input id="lcMail" type="email" placeholder="optional" style="width:200px"></div><div><label style="margin-top:0">Laufzeit (Monate, 0 = unbefristet)</label><input id="lcMon" type="number" min="0" max="120" value="12" style="width:110px"></div><div><label style="margin-top:0">Installationen</label><input id="lcMax" type="number" min="1" max="50" value="1" style="width:90px"></div><div><label style="margin-top:0">Notiz</label><input id="lcNote" placeholder="optional" style="width:160px"></div><button class="primary">Schlüssel ausstellen</button></form>
+        <table class="tbl" style="margin-top:14px"><thead><tr><th>Kunde</th><th>Gültig bis</th><th>Installationen</th><th>Zuletzt gesehen</th><th class="r">Aktionen</th></tr></thead><tbody>${L.records.map((r) => `<tr data-id="${E(r.id)}"><td><b translate="no">${E(r.customer)}</b> ${r.revoked ? '<span class="pill">gesperrt</span>' : ""}<div class="hint" translate="no">${E(r.email)} ${E(r.note)}</div></td><td>${dd(r.until)}</td><td>${r.instances.length} / ${r.max}</td><td>${r.lastSeen ? new Date(r.lastSeen).toLocaleDateString("de-DE") : "–"}</td><td class="r"><button class="sm" data-a="key">Schlüssel</button> ${r.until ? '<button class="sm" data-a="ext">+1 Monat</button> ' : ""}<button class="sm" data-a="reset" title="Installationen freigeben, z. B. beim Umzug">Zurücksetzen</button> <button class="sm" data-a="rev">${r.revoked ? "Entsperren" : "Sperren"}</button> <button class="sm stop" data-a="del">✕</button></td></tr>`).join("") || '<tr><td colspan="5" class="hint">Noch keine Lizenzen ausgestellt.</td></tr>'}</tbody></table>
+        <details style="margin-top:18px"><summary class="hint" style="cursor:pointer">Kundenpaket bauen und ausliefern</summary><ol class="hint" style="line-height:1.7;padding-left:18px"><li>Auf dem Server im Projektordner: <code>./deploy/package.sh</code>. Es entsteht ein geschütztes Paket (Bytecode, verschleierte Browser-Skripte, mit Lizenzprüfung) als <code>packages/tallycall-local.tgz</code>.</li><li>Paket und Schlüssel getrennt an den Kunden senden. Die Anleitung liegt im Paket (LIESMICH.md).</li><li>Verlängerungen: hier „+1 Monat“ oder die Laufzeit erneut ausstellen. Verbundene Installationen holen sich den neuen Schlüssel beim nächsten Abgleich selbst.</li></ol></details>`;
+      }
+    }
+    box.innerHTML = h;
+  }
+  box.addEventListener("click", async (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    if (b.id === "licAct") return run("/api/admin/license-activate", { key: $("licKey").value }, "Lizenz aktiviert");
+    if (b.id === "licChk") return run("/api/admin/license-check", {}, "Abgeglichen");
+    if (b.id === "licInit") return run("/api/admin/license-init", {}, "Lizenzausstellung eingerichtet");
+    const id = b.closest("tr")?.dataset.id, a = b.dataset.a; if (!id) return;
+    const show = (key) => modal("Lizenzschlüssel", `<textarea rows="5" readonly style="font-family:var(--mono);font-size:12.5px" onfocus="this.select()">${E(key)}</textarea><p class="hint">Gib den Schlüssel dem Kunden. Er trägt ihn unter Verwaltung → Lizenz ein.</p>`, [{ label: "Kopieren", cls: "primary", fn: (close) => { navigator.clipboard?.writeText(key); toast("Kopiert"); close(); } }, { label: "Schließen" }]);
+    if (a === "key") { const j = await post("/api/admin/license-key", { id }).catch((x) => toast(x.message, true)); if (j) show(j.key); }
+    if (a === "ext") { const j = await run("/api/admin/license-extend", { id, months: 1 }, "Verlängert"); if (j) show(j.key); }
+    if (a === "reset") run("/api/admin/license-reset", { id }, "Installationen freigegeben");
+    if (a === "rev") run("/api/admin/license-revoke", { id, revoked: !L.records.find((r) => r.id === id).revoked }, "Gespeichert");
+    if (a === "del" && confirm("Diese Lizenz endgültig löschen? Der Kunde verliert damit die Berechtigung.")) run("/api/admin/license-delete", { id }, "Gelöscht");
+  });
+  box.addEventListener("submit", async (e) => {
+    e.preventDefault(); if (e.target.id !== "licForm") return;
+    const j = await run("/api/admin/license-issue", { customer: $("lcName").value, email: $("lcMail").value, months: Number($("lcMon").value), max: Number($("lcMax").value), note: $("lcNote").value }); 
+    if (j?.key) modal("Lizenzschlüssel", `<textarea rows="5" readonly style="font-family:var(--mono);font-size:12.5px" onfocus="this.select()">${E(j.key)}</textarea><p class="hint">Gib den Schlüssel dem Kunden. Er trägt ihn unter Verwaltung → Lizenz ein.</p>`, [{ label: "Kopieren", cls: "primary", fn: (close) => { navigator.clipboard?.writeText(j.key); toast("Kopiert"); close(); } }, { label: "Schließen" }]);
+  });
+  document.querySelector('[data-tab="z"]').addEventListener("click", get);
+})();
+</script>
+</body></html>

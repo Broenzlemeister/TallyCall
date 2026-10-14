@@ -13,7 +13,7 @@ async function req(method, p, body, cookie, headers = {}) {
   return { status: r.status, json, text, cookie: sc ? sc.split(";")[0] : null };
 }
 (async () => {
-  const srv = spawn("node", ["server.js"], { cwd: path.join(__dirname, ".."), env: { ...process.env, PORT, DATA_DIR: DATA, TALLYCALL_AUTH: "on", ALLOW_SIGNUP: "1", OSC_PORT: String(PORT + 1000), STRIPE_WEBHOOK_SECRET: "whsec_smoke" }, stdio: "ignore" });
+  const srv = spawn("node", ["server.js"], { cwd: process.env.TC_ROOT || path.join(__dirname, ".."), env: { ...process.env, PORT, DATA_DIR: DATA, TALLYCALL_AUTH: "on", ALLOW_SIGNUP: "1", OSC_PORT: String(PORT + 1000), STRIPE_WEBHOOK_SECRET: "whsec_smoke" }, stdio: "ignore" });
   try {
     for (let i = 0; i < 50; i++) { try { if ((await req("GET", "/api/health")).status === 200) break; } catch (_) {} await new Promise((r) => setTimeout(r, 100)); }
     ok((await req("GET", "/api/health")).json?.ok === true, "Server startet, /api/health antwortet");
