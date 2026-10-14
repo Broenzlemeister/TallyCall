@@ -30,7 +30,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     execFileSync("node", [path.join(__dirname, "build-protect.js"), "--out", out, "--dist", "--pub", pubFile, "--issuer", `http://127.0.0.1:${PA}`, "--no-obfuscate"], { stdio: "pipe" });
     const dA = start(out, PB, {}); await wait(1500);
     let s = (await call(PB, "/api/admin/license")).json;
-    ok(s.dist && s.state === "trial" && s.daysLeft >= 13, "Kundenversion startet mit 14 Tagen Test");
+    ok(s.dist && s.state === "trial" && s.daysLeft >= 6, "Kundenversion startet mit 7 Tagen Test");
     ok(fs.statSync(path.join(out, "server.js")).size < 300 && !fs.readdirSync(out).some((f) => f.endsWith(".js") && f !== "server.js") && !/planOf|licState/.test(fs.readFileSync(path.join(out, "server.js"), "utf8")), "Kundenversion enthält keinen lesbaren Server-Quelltext");
     const iss = (await call(PA, "/api/admin/license-issue", { customer: "Testkunde", email: "k@x.de", months: 1 })).json;
     ok(iss.key && iss.key.startsWith("TC1-"), "Lizenzserver stellt Schlüssel aus");
@@ -67,8 +67,20 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     // Test abgelaufen, ohne Schlüssel
     const dD = start(out, PB + 1, {}); fs.writeFileSync(path.join(dD, "instance.json"), JSON.stringify({ id: "abc", trialStart: Date.now() - 20 * 864e5 })); await wait(1500);
     ok((await call(PB + 1, "/api/admin/license")).json.state === "none" && (await call(PB + 1, "/api/me")).json.user.plan === "free", "Test abgelaufen: Free-Grenzen");
+    {
+      const pid = (await call(PB + 1, "/api/me")).json.projects[0].id, st = (await call(PB + 1, `/api/p/${pid}/state`)).json;
+      const r = await call(PB + 1, `/api/p/${pid}/action`, { type: "add", dayId: st.days[0].id, data: { title: "Mehr", duration: 600 } });
+      ok(r.status === 402, "Kundenversion ohne Lizenz: Inhalt über 60 Minuten wird abgelehnt");
+      ok((await call(PB + 1, "/api/projects", { name: "Zweite Show", template: "empty" })).status === 402, "Kundenversion ohne Lizenz: nur eine Show");
+    }
     ok((await call(PA, "/api/license/check", { key: "x" })).json.invalid === true, "Lizenzserver weist ungültige Anfragen ab");
     ok((await call(PA, "/api/admin/license")).json.dist === false, "Online-Dienst braucht keine Lizenz");
+
+    // Online: neue Konten testen 7 Tage alles (Server mit Konten, ohne Testphase-Abschaltung)
+    const PT = PB + 2; start(path.join(__dirname, ".."), PT, { TALLYCALL_AUTH: "on", ALLOW_SIGNUP: "1", ADMIN_EMAIL: "chef@x.de" }); await wait(1500);
+    const sr = await fetch(`http://127.0.0.1:${PT}/api/signup`, { method: "POST", headers: { "content-type": "application/json", "x-cl": "1" }, body: JSON.stringify({ email: "neu@x.de", name: "Neu", password: "geheim1234" }) });
+    const ck = sr.headers.get("set-cookie").split(";")[0], me = (await (await fetch(`http://127.0.0.1:${PT}/api/me`, { headers: { cookie: ck } })).json()).user;
+    ok(me.plan === "pro" && me.trialUntil > Date.now() + 6 * 864e5 && me.trialUntil < Date.now() + 8 * 864e5, "Neues Konto testet 7 Tage mit allen Funktionen");
   } catch (e) { console.error(e); failed++; }
   procs.forEach((p) => p.kill());
   console.log(failed ? `\n${failed} Prüfung(en) fehlgeschlagen` : "\nLizenz: alle Prüfungen bestanden");

@@ -6,7 +6,7 @@ Was auf dem Rechner eines anderen läuft, lässt sich nie vollständig schützen
 | Wo läuft der Code? | Schutz |
 |---|---|
 | **Online (tallycall.com)** | Der Server-Code verlässt den Server nie. Das Docker-Image enthält nur V8-Bytecode, keinen lesbaren Quelltext. Zum Browser gehen nur minimierte und verschleierte Skripte. Die Seiten-Logik, Konten, Zahlung, Lizenzen und Daten liegen auf dem Server. |
-| **Kunde hostet selbst** | Geschützte Kundenversion: Bytecode, verschleierte Browser-Skripte, Lizenzprüfung fest eingebaut. Ohne Schlüssel 14 Tage Test, danach Free-Grenzen. |
+| **Kunde hostet selbst** | Geschützte Kundenversion: Bytecode, verschleierte Browser-Skripte, Lizenzprüfung fest eingebaut. Ohne Schlüssel 7 Tage Test mit allen Funktionen, danach Free (eine Show mit höchstens 60 Minuten Inhalt, keine Trigger und API-Schlüssel). |
 
 Ehrlich gesagt: Entschlossene Fachleute können Browser-Code lesen und Bytecode umgehen. Das Ziel ist, dass sich Kopieren und Umgehen weniger lohnt als Kaufen (7,99 € im Monat), und dass du bei Verstößen den Rechtsweg hast. Wichtig dafür:
 - **Repository privat lassen.** Der Quelltext darf nur auf deinem Server und bei dir liegen. Kunden bekommen nie das Repo, nur das Paket.

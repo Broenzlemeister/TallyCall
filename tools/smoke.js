@@ -13,7 +13,7 @@ async function req(method, p, body, cookie, headers = {}) {
   return { status: r.status, json, text, cookie: sc ? sc.split(";")[0] : null };
 }
 (async () => {
-  const srv = spawn("node", ["server.js"], { cwd: process.env.TC_ROOT || path.join(__dirname, ".."), env: { ...process.env, PORT, DATA_DIR: DATA, TALLYCALL_AUTH: "on", ALLOW_SIGNUP: "1", OSC_PORT: String(PORT + 1000), STRIPE_WEBHOOK_SECRET: "whsec_smoke" }, stdio: "ignore" });
+  const srv = spawn("node", ["server.js"], { cwd: process.env.TC_ROOT || path.join(__dirname, ".."), env: { ...process.env, PORT, DATA_DIR: DATA, TALLYCALL_AUTH: "on", ALLOW_SIGNUP: "1", TRIAL_DAYS: "0", OSC_PORT: String(PORT + 1000), STRIPE_WEBHOOK_SECRET: "whsec_smoke" }, stdio: "ignore" });
   try {
     for (let i = 0; i < 50; i++) { try { if ((await req("GET", "/api/health")).status === 200) break; } catch (_) {} await new Promise((r) => setTimeout(r, 100)); }
     ok((await req("GET", "/api/health")).json?.ok === true, "Server startet, /api/health antwortet");
@@ -61,7 +61,18 @@ async function req(method, p, body, cookie, headers = {}) {
     ok((await req("POST", base + "/admin", { type: "tokenRevoke", id: tk.json.id }, c)).status === 200 && (await req("GET", base + "/status?token=" + tk.json.token)).status === 401, "Widerrufener Schlüssel ist ungültig");
     const me = (await req("GET", "/api/me", null, c)).json; ok(me.user.siteAdmin === true && me.user.plan === "pro", "Erstes Konto ist Server-Admin mit Pro");
     const meB = (await req("GET", "/api/me", null, b.cookie)).json; ok(!meB.user.siteAdmin && meB.user.plan === "free", "Zweites Konto ist Free");
-    ok((await req("POST", "/api/projects", { name: "B1" }, b.cookie)).status === 200 && (await req("POST", "/api/projects", { name: "B2" }, b.cookie)).status === 402, "Free-Plan: ein eigenes Projekt");
+    const b1 = await req("POST", "/api/projects", { name: "B1", template: "empty" }, b.cookie);
+    ok(b1.status === 200 && (await req("POST", "/api/projects", { name: "B2" }, b.cookie)).status === 402, "Free-Plan: ein eigenes Projekt");
+    {
+      const bb = "/api/p/" + b1.json.id, A = (a) => req("POST", bb + "/action", a, b.cookie), dayId = (await req("GET", bb + "/state", null, b.cookie)).json.days[0].id;
+      ok((await A({ type: "add", dayId, data: { title: "Teil 1", duration: 3000 } })).status === 200, "Free: Inhalt bis 60 Minuten erlaubt");
+      const over = await A({ type: "add", dayId, data: { title: "Teil 2", duration: 900 } });
+      ok(over.status === 402 && over.json.upgrade, "Free: mehr als 60 Minuten Inhalt wird abgelehnt");
+      ok((await req("GET", bb + "/state", null, b.cookie)).json.days[0].events.filter((e) => e.title === "Teil 2").length === 0, "Abgelehnter Punkt wurde nicht angelegt");
+      ok((await A({ type: "add", dayId, data: { title: "Teil 3", duration: 600 } })).status === 200, "Free: genau 60 Minuten sind erlaubt");
+      ok((await req("POST", "/api/projects", { name: "B4", template: "conference" }, c)).status === 200, "Pro darf die lange Vorlage nutzen");
+      ok((await req("GET", "/api/me", null, b.cookie)).json.user.limits.content === 3600, "Free-Grenze wird an die App gemeldet");
+    }
     ok((await req("GET", "/api/admin/overview", null, b.cookie)).status === 403, "Verwaltung nur für Server-Admins");
     const ov = (await req("GET", "/api/admin/overview", null, c)).json; ok(ov.stats.users === 2 && ov.users.length === 2, "Verwaltung zeigt Nutzer");
     ok((await req("POST", "/api/admin/plan", { userId: meB.user.id, plan: "pro", months: 12 }, c)).json.user.plan === "pro" && (await req("GET", "/api/me", null, b.cookie)).json.user.plan === "pro", "Admin schaltet Pro frei");

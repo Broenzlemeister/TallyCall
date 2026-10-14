@@ -33,7 +33,9 @@ const PLAN_MONTHS = Number(process.env.PLAN_MONTHS) || 1; // Laufzeit je Zahlung
 const PLAN_GRACE = 3 * 86400000; // Nachfrist nach Ablauf, bis die Verlängerung eintrifft
 const STRIPE_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
 const ADMIN_EMAILS = String(process.env.ADMIN_EMAIL || "").toLowerCase().split(/[\s,]+/).filter(Boolean);
-const LIMITS = { free: { projects: 1, days: 2, shares: 3, integrations: false, tokens: false }, pro: { projects: Infinity, days: Infinity, shares: Infinity, integrations: true, tokens: true } };
+// Free: eine Show mit höchstens einer Stunde Inhalt (Summe aller Punkte und Pausen). Pro: unbegrenzt. Neue Konten und neue Kundeninstallationen testen 7 Tage lang alles.
+const LIMITS = { free: { projects: 1, days: Infinity, shares: Infinity, integrations: false, tokens: false, content: 3600 }, pro: { projects: Infinity, days: Infinity, shares: Infinity, integrations: true, tokens: true, content: Infinity } };
+const TRIAL_DAYS = process.env.TRIAL_DAYS != null && process.env.TRIAL_DAYS !== "" ? Math.max(0, Number(process.env.TRIAL_DAYS) || 0) : License.TRIAL_DAYS;
 const PUB = path.join(__dirname, "public");
 const VIEWS_DIR = path.join(__dirname, "views");
 const store = require("./lib/store.js").open(DATA);
@@ -159,12 +161,16 @@ function licenseCheck(req, res, ip) {
 // ---------- Lizenzen ----------
 // Mit ADMIN_EMAIL sind nur diese Adressen Server-Admin. Ohne die Variable gilt das Flag am Konto (das erste Konto bekommt es).
 const isSiteAdmin = (u) => !!u && (!!u.local || (ADMIN_EMAILS.length ? ADMIN_EMAILS.includes(String(u.email).toLowerCase()) : !!u.siteAdmin));
-const planOf = (u) => (DIST ? (licState().pro ? "pro" : "free") : !PLANS || isSiteAdmin(u) || (u && u.plan === "pro" && (!u.planUntil || u.planUntil + PLAN_GRACE > Date.now())) ? "pro" : "free");
+const trialUntil = (u) => { if (DIST) { const t = licState(); return t.state === "trial" ? licInst.trialStart + License.TRIAL_DAYS * 86400000 : 0; } const e = !PLANS || !u || u.local || !TRIAL_DAYS ? 0 : u.created + TRIAL_DAYS * 86400000; return e > Date.now() ? e : 0; };
+const planOf = (u) => (DIST ? (licState().pro ? "pro" : "free") : !PLANS || isSiteAdmin(u) || (u && u.plan === "pro" && (!u.planUntil || u.planUntil + PLAN_GRACE > Date.now())) || trialUntil(u) ? "pro" : "free");
 const limits = (u) => LIMITS[planOf(u)];
-const planInfo = (u) => ({ plan: planOf(u), until: u?.planUntil || 0, enforced: PLANS, license: DIST ? (({ state, daysLeft }) => ({ state, daysLeft }))(licState()) : null, payLink: payLink(), portalLink: portalLink(), price: site.price, limits: { ...limits(u), projects: isFinite(limits(u).projects) ? limits(u).projects : 0, days: isFinite(limits(u).days) ? limits(u).days : 0, shares: isFinite(limits(u).shares) ? limits(u).shares : 0 } });
+const planInfo = (u) => ({ plan: planOf(u), until: u?.planUntil || 0, enforced: PLANS, license: DIST ? (({ state, daysLeft }) => ({ state, daysLeft }))(licState()) : null, payLink: payLink(), portalLink: portalLink(), price: site.price, trialUntil: DIST ? trialUntil(u) : planOf(u) === "pro" && !(u && u.plan === "pro") && !isSiteAdmin(u) ? trialUntil(u) : 0, limits: { ...limits(u), content: isFinite(limits(u).content) ? limits(u).content : 0, projects: isFinite(limits(u).projects) ? limits(u).projects : 0, days: isFinite(limits(u).days) ? limits(u).days : 0, shares: isFinite(limits(u).shares) ? limits(u).shares : 0 } });
 // Plan-Grenzen gelten nach dem Besitzer des Projekts (erster Admin), nicht nach der Person, die gerade arbeitet
 const ownerOf = (h) => { const m = h.meta.members.find((x) => x.role === "admin"); return m ? userById(m.userId) : null; };
 const limitsOf = (h, fallback) => limits(ownerOf(h) || fallback);
+const enforce = (u) => PLANS && !!u && (!u.local || DIST); // lokaler Modus ohne Lizenzprüfung bleibt unbegrenzt
+const ownedCount = (u) => (u.local ? hosts.size : ownedProjects(u));
+const contentSec = (st) => ((st && st.draft) || st).days.reduce((n, d) => n + d.events.reduce((m, e) => m + (e.type === "group" ? 0 : Number(e.duration) || 0), 0), 0);
 const ownedProjects = (u) => [...hosts.values()].filter((h) => h.meta.members.some((m) => m.userId === u.id && m.role === "admin")).length;
 function grantPlan(u, months, { source = "manual", ref = "", amount = 0, currency = "", by = "" } = {}) {
   const base = Math.max(Date.now(), u.planUntil || 0);
@@ -460,10 +466,12 @@ async function api(req, res, url, segs, user) {
   if (a === "projects" && post) {
     const d = await readBody(req), name = String(d.name || "").trim().slice(0, 80);
     if (!name) return send(res, 400, { error: "Bitte einen Namen eingeben" });
-    if (!user.local && ownedProjects(user) >= limits(user).projects) return send(res, 402, { error: "Im Free-Plan ist ein eigenes Projekt möglich. Für mehr Projekte auf Pro wechseln.", upgrade: true });
+    if (enforce(user) && ownedCount(user) >= limits(user).projects) return send(res, 402, { error: "Im Free-Plan ist ein eigenes Projekt möglich. Für mehr Projekte auf Pro wechseln.", upgrade: true });
     let tz = String(d.timezone || TZ_DEFAULT);
     try { new Intl.DateTimeFormat("de", { timeZone: tz }); } catch (_) { tz = TZ_DEFAULT; }
-    const h = newProject({ name, timezone: tz, sample: !!d.sample, template: ["conference", "concert", "empty"].includes(d.template) ? d.template : "", owner: user });
+    const tpl = ["conference", "concert", "empty"].includes(d.template) ? d.template : "";
+    if (enforce(user) && isFinite(limits(user).content) && contentSec(Engine.createState({ name, timezone: tz, sample: !!d.sample, template: tpl })) > limits(user).content) return send(res, 402, { error: "Diese Vorlage hat mehr als 60 Minuten Inhalt. Im Free-Plan bitte „Leer“ wählen oder auf Pro wechseln." });
+    const h = newProject({ name, timezone: tz, sample: !!d.sample, template: tpl, owner: user });
     return send(res, 200, { id: h.meta.id });
   }
   if (a === "admin") return siteAdminApi(req, res, segs.slice(1), user, url);
@@ -497,10 +505,14 @@ async function api(req, res, url, segs, user) {
     if (c === "action" && post) {
       const act = await readBody(req);
       const pre = { title: act.id ? titleOf(h, act.id) : "" };
-      if (!user.local && PLANS) {
+      if (enforce(user)) {
         const L = limitsOf(h, user);
         if (act.type === "dayAdd" && (h.state.draft || h.state).days.length >= L.days) return send(res, 402, { error: `Im Free-Plan sind ${L.days} Tage je Projekt möglich. Für mehr Tage auf Pro wechseln.`, upgrade: true });
         if (/^(target|rule)Add$/.test(act.type) && !L.integrations) return send(res, 402, { error: "Trigger und Integrationen gibt es im Pro-Plan.", upgrade: true });
+      }
+      if (enforce(user) && isFinite(limitsOf(h, user).content)) { // Inhalt darf im Free-Plan nicht über die Grenze wachsen
+        const L = limitsOf(h, user), before = contentSec(h.state);
+        try { const probe = JSON.parse(JSON.stringify(h.state)); Engine.create(probe).act(JSON.parse(JSON.stringify(act))); const after = contentSec(probe); if (after > L.content && after > before) return send(res, 402, { error: "Im Free-Plan sind höchstens 60 Minuten Inhalt je Show möglich. Für mehr Inhalt auf Pro wechseln.", upgrade: true }); } catch (_) {}
       }
       let out; try { out = h.engine.act(act); } catch (e) { return send(res, 400, { error: e.message }); }
       const text = describe(h, act, pre);
@@ -576,7 +588,7 @@ function projectAdmin(req, res, h, role, user, d) {
       if (params.g && !h.state.gewerke.some((g) => g.id === params.g)) return send(res, 400, { error: "Unbekanntes Gewerk" });
       let s = m.shares.find((x) => !x.revoked && x.view === d.view && JSON.stringify(x.params) === JSON.stringify(params));
       if (!s) {
-        if (!user.local && m.shares.filter((x) => !x.revoked).length >= limitsOf(h, user).shares) return send(res, 402, { error: `Im Free-Plan sind ${limitsOf(h, user).shares} Freigabe-Links möglich. Für mehr auf Pro wechseln.`, upgrade: true });
+        if (enforce(user) && m.shares.filter((x) => !x.revoked).length >= limitsOf(h, user).shares) return send(res, 402, { error: `Im Free-Plan sind ${limitsOf(h, user).shares} Freigabe-Links möglich. Für mehr auf Pro wechseln.`, upgrade: true });
         s = { id: auth.id(4), token: auth.token(18), view: d.view, params, label: String(d.label || "").slice(0, 60), by: user.name, created: Date.now() };
         m.shares.push(s); audit(h, user, `Freigabe-Link erstellt: ${d.view}${params.g ? " (" + params.g + ")" : ""}`);
       }
@@ -591,7 +603,7 @@ function projectAdmin(req, res, h, role, user, d) {
     }
     case "tokenCreate": {
       if (!admin) return deny();
-      if (!user.local && !limitsOf(h, user).tokens) return send(res, 402, { error: "API-Schlüssel gibt es im Pro-Plan.", upgrade: true });
+      if (enforce(user) && !limitsOf(h, user).tokens) return send(res, 402, { error: "API-Schlüssel gibt es im Pro-Plan.", upgrade: true });
       if (m.tokens.filter((t) => !t.revoked).length >= 20) return send(res, 400, { error: "Maximal 20 Schlüssel" });
       const raw = "tc_" + auth.token(24), t = { id: auth.id(4), name: String(d.name || "Companion").slice(0, 40), scope: d.scope === "read" ? "read" : "control", hash: hashToken(raw), prefix: raw.slice(0, 7), by: user.name, created: Date.now(), lastUsed: 0 };
       m.tokens.push(t); audit(h, user, `API-Schlüssel „${t.name}“ erstellt`);
@@ -604,7 +616,7 @@ function projectAdmin(req, res, h, role, user, d) {
       return ok();
     }
     case "duplicate": {
-      if (!user.local && ownedProjects(user) >= limits(user).projects) return send(res, 402, { error: "Im Free-Plan ist ein eigenes Projekt möglich. Für mehr Projekte auf Pro wechseln.", upgrade: true });
+      if (enforce(user) && ownedCount(user) >= limits(user).projects) return send(res, 402, { error: "Im Free-Plan ist ein eigenes Projekt möglich. Für mehr Projekte auf Pro wechseln.", upgrade: true });
       const copy = newProject({ name: `${m.name} (Kopie)`, timezone: h.state.settings.timezone, sample: false, owner: user });
       const s = JSON.parse(JSON.stringify(h.state));
       Object.assign(s, { show: { name: copy.meta.name }, runtime: copy.state.runtime, ready: {}, log: [], actuals: {}, draft: null, draftRev: 0, message: { text: "", visible: false } });

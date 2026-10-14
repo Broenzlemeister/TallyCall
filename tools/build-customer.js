@@ -37,7 +37,7 @@ fs.writeFileSync(path.join(out, "LIESMICH.md"), `# Tallycall lokal betreiben
 - **Docker:** \`docker compose up -d --build\`, danach \`http://SERVER:4001\` öffnen.
 - **Ohne Docker:** Node.js 22 installieren, dann \`./start.sh\` (Windows: \`start.bat\`).
 
-Beim ersten Start läuft Tallycall **14 Tage mit allen Funktionen zum Testen**. Danach gelten die Free-Grenzen (1 Projekt, 2 Tage, 3 Freigabelinks, keine Trigger und API-Schlüssel), bis ein Lizenzschlüssel eingetragen ist.
+Beim ersten Start läuft Tallycall **7 Tage mit allen Funktionen zum Testen**. Danach gelten die Free-Grenzen (1 Show mit höchstens 60 Minuten Inhalt, keine Trigger und API-Schlüssel), bis ein Lizenzschlüssel eingetragen ist.
 
 ## Lizenzschlüssel eintragen
 1. Oberfläche öffnen → oben rechts das Konto-Menü → **Verwaltung** → Reiter **Lizenz**.

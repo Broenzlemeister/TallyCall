@@ -51,7 +51,7 @@ Eine Schritt-für-Schritt-Anleitung für ein eigenes VPS mit automatischem Deplo
 | `TALLYCALL_TRIGGERS` | `public` nur öffentliche Ziele, `all` auch LAN, `off` aus | `public` mit Konten, sonst `all` |
 | `OSC_PORT` | UDP-Port für den OSC-Eingang, leer = aus | aus |
 | `ADMIN_EMAIL` | Die einzigen Server-Admins (Komma-getrennt). **Setzen!** Ohne die Variable wird das erste registrierte Konto Admin | – |
-| `TALLYCALL_PLANS` | `on` Free/Pro mit Grenzen (1 Projekt, 2 Tage, 3 Links, keine Trigger), `off` alles frei | `on` mit Konten |
+| `TALLYCALL_PLANS` | `on` Free/Pro mit Grenzen (1 Show mit höchstens 60 Minuten Inhalt, keine Trigger und API-Schlüssel; neue Konten testen 7 Tage alles, `TRIAL_DAYS` ändert das), `off` alles frei | `on` mit Konten |
 | `PAY_LINK`, `PLAN_MONTHS`, `STRIPE_WEBHOOK_SECRET` | Bezahlung für Pro (Stripe Payment Link, Monate je Zahlung, Webhook-Signatur `invoice.paid`). Link, Preis und OSC-Port lassen sich auch unter Verwaltung → Einstellungen setzen | – / 1 / – |
 
 ## Sicherheit
