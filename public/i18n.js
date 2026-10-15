@@ -16,8 +16,7 @@ const I18N = (() => {
     const q = new URLSearchParams(window.CL_SEARCH || "").get("lang"), q2 = new URLSearchParams(location.search).get("lang");
     if (q2 && ids.includes(q2)) { store.set("cl_lang", q2); return q2; } // ausdrücklich in der Adresse gewählt: merken
     for (const c of [q, store.get("cl_lang")]) if (c && ids.includes(c)) return c;
-    for (const l of navigator.languages || [navigator.language || "en"]) { const p = String(l).toLowerCase().slice(0, 2); if (ids.includes(p)) return p; }
-    return "en";
+    return "en"; // Standardsprache ist Englisch, unabhängig von der Browsersprache. Wer eine andere Sprache wählt, bekommt sie gemerkt.
   }
   const lang = window.I18N_FORCE || detect();
   const locale = LANGS.find((l) => l.id === lang).locale;

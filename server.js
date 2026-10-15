@@ -803,7 +803,7 @@ if (require.main === module || process.env.TC_BOOT === "1") startOsc();
 // ---------- Rechtliche Seiten und Exporte ----------
 const legalDomain = () => { try { return new URL(PUBLIC_URL).hostname; } catch (_) { return ""; } };
 function legalPage(req, res, url, kind, user) {
-  const q = url.searchParams.get("lang"), lang = q === "en" || q === "de" ? q : /^de/i.test(req.headers["accept-language"] || "") ? "de" : "en";
+  const q = url.searchParams.get("lang"), lang = q === "de" ? "de" : "en"; // Standard: Englisch
   const html = Legal.render(kind === "impressum" ? "impressum" : "privacy", site.legal, lang, { domain: legalDomain(), plans: PLANS, incomplete: isSiteAdmin(user) && Legal.missing(site.legal).length > 0 });
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" }); res.end(html);
 }
