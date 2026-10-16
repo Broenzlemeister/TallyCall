@@ -277,7 +277,7 @@ html { scroll-behavior:smooth; scroll-padding-top:70px; } body { overflow-x:hidd
 <section class="final"><div class="c"><h2 class="sec">Bring deine Show in Takt.</h2><p class="lead" style="margin:0 auto">Lege dein erstes Projekt an und plane den ersten Tag in wenigen Minuten.</p><div class="cta"><a class="btn primary" href="/signup">Jetzt starten</a><a class="btn" href="/login">Anmelden</a></div></div></section>
 
 <footer><div class="c"><a class="brand" href="/"><img src="/logo.svg" alt="">Tallycall</a><span>Ablaufregie für Live-Events</span><span class="sp"></span><a href="/docs/osc">OSC</a><a href="/docs/api">API</a><a href="/impressum">Impressum</a><a href="/datenschutz">Datenschutz</a></div></footer>
-<script src="/i18n.js"></script>
+<script src="/i18n.js"></script><script src="/feedback.js" defer></script>
 <script>
 (() => { const b = document.getElementById("burger"), m = document.getElementById("menu"); const set = (o) => { m.classList.toggle("open", o); b.setAttribute("aria-expanded", o); };
   b.onclick = () => set(!m.classList.contains("open")); m.addEventListener("click", (e) => { if (e.target.closest("a")) set(false); }); document.addEventListener("keydown", (e) => e.key === "Escape" && set(false)); addEventListener("resize", () => innerWidth > 860 && set(false)); })();

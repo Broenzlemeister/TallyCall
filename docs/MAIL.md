@@ -28,6 +28,8 @@ Beim Domain-Anbieter müssen für die Absender-Domain drei Einträge stimmen. De
 Ohne diese Einträge landen Passwort-Mails bei Gmail und Outlook häufig im Spam.
 
 ## Was verschickt wird
+- **Testphase (automatisch):** Willkommen mit Enddatum der Testphase, zwei Tage vor dem Ende „Deine Testphase endet bald“ und nach dem Ende „Testphase abgelaufen, jetzt Pro holen“ (mit Link zum Kauf). Jede Mail kommt nur einmal. Bezahlte Konten, Server-Admins und Konten, deren Testphase schon länger vorbei ist, bekommen sie nicht. Voraussetzung: `PUBLIC_URL` ist gesetzt.
+- **Feedback:** Neue Nachrichten aus dem Feedback-Fenster melden sich per Mail beim Admin (höchstens eine Mail pro 10 Minuten, sonst sammeln sie sich in Verwaltung → Feedback). Antworten gehen aus der Verwaltung per Mail an die angegebene Adresse.
 - **Passwort vergessen:** Link auf der Anmeldeseite. Der Link gilt 1 Stunde und genau einmal, danach sind alle bestehenden Sitzungen beendet. Die Antwort ist immer gleich, damit niemand prüfen kann, welche Adressen ein Konto haben.
 - **Passwort geändert:** Hinweis an die Konto-Adresse (nach Zurücksetzen oder Änderung im Konto).
 - **Willkommen:** nach der Registrierung, mit dem Hinweis auf die Testphase.

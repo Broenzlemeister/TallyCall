@@ -125,6 +125,41 @@ const link = (raw, re) => (re.exec(decode(raw)) || [])[0];
     const cfg = (await req("GET", "/api/admin/mail", null, adm.cookie)).json.cfg;
     ok(cfg.hasPass === true && !JSON.stringify(cfg).includes("geheim"), "Das Passwort wird nie an den Browser zurückgegeben");
     ok(/Forgot password|reset/i.test((await req("GET", "/forgot")).text), "Seite „Passwort vergessen“ wird ausgeliefert");
+    // --- Feedback-Fenster ---
+    const fbBefore = smtp.mails.length;
+    ok((await req("POST", "/api/feedback", { type: "bug", text: "" })).status === 400, "Feedback: leere Nachricht wird abgelehnt");
+    const f1 = await req("POST", "/api/feedback", { type: "bug", text: "Der Timer springt beim Pausieren", page: "/p/abc/?token=geheim", lang: "de", screen: "390x844" }, cleo.cookie);
+    const f2 = await req("POST", "/api/feedback", { type: "idea", text: "Bitte Dark Mode für die Website", email: "gast@example.com" });
+    ok(f1.status === 200 && f2.status === 200, "Feedback: Konto und Gast können Nachrichten senden");
+    ok((await req("GET", "/api/admin/feedback", null, cleo.cookie)).status === 403, "Feedback: Liste nur für Server-Admins");
+    let fb = (await req("GET", "/api/admin/feedback", null, adm.cookie)).json;
+    ok(fb.items.length === 2 && fb.news === 2 && fb.items[1].name === "Cleo" && fb.items[1].email === "cleo@example.com" && fb.items[0].email === "gast@example.com", "Admin sieht beide Nachrichten, Name und E-Mail kommen vom Konto");
+    ok((await req("GET", "/api/me", null, adm.cookie)).json.user.feedbackNew === 2 && (await req("GET", "/api/me", null, cleo.cookie)).json.user.feedbackNew === undefined, "Zähler für neue Nachrichten nur für den Admin");
+    ok(await wait(() => smtp.mails.length === fbBefore + 1) && smtp.mails[fbBefore].to[0] === "chef@example.com" && /Der Timer springt/.test(decode(smtp.mails[fbBefore].raw)), "Admin bekommt eine Benachrichtigung per Mail");
+    await new Promise((r) => setTimeout(r, 400)); ok(smtp.mails.length === fbBefore + 1, "Benachrichtigung ist gebündelt: nicht eine Mail pro Nachricht");
+    const gid = fb.items[0].id, rep = await req("POST", "/api/admin/feedback-reply", { id: gid, text: "Danke, kommt im nächsten Update." }, adm.cookie);
+    ok(rep.status === 200 && (await wait(() => smtp.mails.some((m) => m.to[0] === "gast@example.com" && /nächsten Update|next update/.test(decode(m.raw))))), "Antwort geht per Mail an die Adresse im Feedback");
+    fb = (await req("GET", "/api/admin/feedback", null, adm.cookie)).json;
+    ok(fb.items[0].status === "done" && fb.items[0].replies.length === 1 && fb.news === 1, "Beantwortete Nachricht gilt als erledigt");
+    ok((await req("POST", "/api/admin/feedback-reply", { id: fb.items[1].id, text: "Hallo" }, adm.cookie)).status === 200, "Antwort an ein Konto funktioniert");
+    ok((await req("POST", "/api/admin/feedback-delete", { id: gid }, adm.cookie)).json.news === 0 && (await req("GET", "/api/admin/feedback", null, adm.cookie)).json.items.length === 1, "Nachricht löschen");
+    let many = 0; for (let i = 0; i < 8; i++) many = (await req("POST", "/api/feedback", { type: "other", text: "Spam " + i })).status; ok(many === 429, "Feedback von Gästen ist pro Adresse begrenzt");
+    ok(/Feedback/.test((await req("GET", "/feedback.js")).text), "Feedback-Fenster wird ausgeliefert");
+
+    // --- Mails rund um die Testphase (zweiter Server mit sehr kurzer Testphase) ---
+    const smtp2 = await fakeSmtp("plain", null), PORT2 = PORT + 400;
+    procs.push(spawn("node", ["server.js"], { cwd: path.join(__dirname, ".."), env: { ...process.env, PORT: PORT2, DATA_DIR: path.join(tmp, "data2"), TALLYCALL_AUTH: "on", ALLOW_SIGNUP: "1", OSC_PORT: "0", PUBLIC_URL: "https://tallycall.test", TRIAL_DAYS: "0.00005", TC_MAIL_TICK_MS: "400", SMTP_HOST: "127.0.0.1", SMTP_PORT: String(smtp2.port), SMTP_SECURE: "none", SMTP_FROM: "no-reply@tallycall.test" }, stdio: "ignore" }));
+    await new Promise((r) => setTimeout(r, 1500));
+    const R2 = (p, body) => fetch(`http://127.0.0.1:${PORT2}${p}`, { method: "POST", headers: { "content-type": "application/json", "x-cl": "1" }, body: JSON.stringify(body) });
+    await R2("/api/signup", { name: "Chef", email: "chef2@example.com", password: "geheim1234" }); // Server-Admin bekommt keine Testphasen-Mails
+    await R2("/api/signup", { name: "Tina", email: "tina@example.com", password: "geheim1234", lang: "en" });
+    ok(await wait(() => smtp2.mails.filter((m) => m.to[0] === "tina@example.com").length >= 3, 9000), "Testphase: Willkommen, „endet bald“ und „abgelaufen“ werden automatisch gesendet");
+    const tm = smtp2.mails.filter((m) => m.to[0] === "tina@example.com").map((m) => decode(m.raw));
+    ok(/Welcome to Tallycall/.test(tm[0]) && /trial ends/.test(tm[1]) && /trial has ended|trial ended/.test(tm[2]), "Testphase: Reihenfolge Willkommen, endet bald, abgelaufen");
+    ok(/https:\/\/tallycall\.test\/app\?upgrade=1/.test(tm[2]) && /€7\.99|7,99 €|7\.99/.test(tm[2]), "Abgelaufen-Mail: Link zum Kauf und Preis");
+    await new Promise((r) => setTimeout(r, 1500));
+    ok(smtp2.mails.filter((m) => m.to[0] === "tina@example.com").length === 3 && !smtp2.mails.some((m) => m.to[0] === "chef2@example.com" && /trial/i.test(decode(m.raw))), "Jede Mail nur einmal, Server-Admin bekommt keine Testphasen-Mails");
+
   } catch (e) { console.error(e); failed++; }
   procs.forEach((p) => p.kill());
   console.log(failed ? `\n${failed} Prüfung(en) fehlgeschlagen` : "\nE-Mail: alle Prüfungen bestanden");

@@ -96,6 +96,7 @@ const UI = (() => {
       ${meta.role === "admin" ? `<a class="btn sm ghost" href="${ctx.base}/settings" title="Projekteinstellungen" ${active === "settings" ? 'aria-current="page"' : ""}>Einstellungen</a>` : ""}
       <span class="dot on" id="dot"></span>
       <button class="avatar" id="uiUser" translate="no" title="${E(meta.user.name)}">${E((meta.user.name || "?").trim().slice(0, 1).toUpperCase())}</button>`;
+    if (!window.__tcFb) { const f = document.createElement("script"); f.src = "/feedback.js"; document.head.appendChild(f); } // Feedback-Fenster unten links
     CL.onStatus((ok) => $("#dot", host).classList.toggle("on", ok));
     $("#uiScreens", host).onclick = (e) => screensMenu(e.currentTarget);
     $("#uiUser", host).onclick = (e) => userMenu(e.currentTarget, meta.user);

@@ -23,7 +23,7 @@
   <div id="others" hidden style="margin-top:34px"><h2 style="font-size:18px;margin:0 0 4px">Alle Projekte auf dem Server</h2><p class="hint" style="margin:0 0 14px">Nur du als Server-Admin siehst diese Liste. Die Besitzer sehen nur ihre eigenen Projekte.</p><div id="othersList" class="grid"></div></div>
 </div>
 <footer style="max-width:1100px;margin:40px auto 30px;padding:0 18px;display:flex;gap:18px;flex-wrap:wrap;color:var(--mute);font-size:13px"><a href="/impressum">Impressum</a><a href="/datenschutz">Datenschutz</a><a href="/docs/osc">OSC</a><a href="/docs/companion">Companion</a></footer>
-<script src="/i18n.js"></script>
+<script src="/i18n.js"></script><script src="/feedback.js" defer></script>
 <script>
 const $ = (i) => document.getElementById(i), E = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const post = async (path, body) => { const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "x-cl": "1" }, body: JSON.stringify(body) }); const j = await r.json().catch(() => ({})); if (r.status === 402 && j.upgrade) document.dispatchEvent(new CustomEvent("cl-upgrade", { detail: j.error })); if (!r.ok) throw new Error(j.error || "Fehler"); return j; };
@@ -67,7 +67,7 @@ function upgrade() {
 }
 function paintUser() {
   $("uiUser").textContent = (me.name || "?").slice(0, 1).toUpperCase(); $("greet").textContent = me.local ? "Lokaler Modus" : `Angemeldet als ${me.name}`;
-  $("adminLink").hidden = !me.siteAdmin || me.local;
+  $("adminLink").hidden = !me.siteAdmin || me.local; if (me.feedbackNew) $("adminLink").textContent = I18N.t("Verwaltung") + " (" + me.feedbackNew + ")";
   if (me.enforced && (!me.local || me.license)) { const p = $("planPill"); p.hidden = false; p.className = "pill " + (me.plan === "pro" ? "pro" : ""); const up = me.payLink ? ` · <a href="#" id="upLink">${I18N.t("Auf Pro wechseln")}</a>` : ""; p.innerHTML = me.trialUntil ? `${I18N.t("Test bis {d}", { d: new Date(me.trialUntil).toLocaleDateString(I18N.locale) })}${up}` : me.plan === "pro" ? "Pro" + (me.until ? ` <span class="hint">${I18N.t("bis {d}", { d: new Date(me.until).toLocaleDateString(I18N.locale) })}</span>` : "") + (me.portalLink && !me.siteAdmin ? ` · <a href="${E(me.portalLink)}" target="_blank" rel="noopener">${I18N.t("Abo verwalten")}</a>` : "") : `Free${up}`; if ($("upLink")) $("upLink").onclick = (e) => { e.preventDefault(); upgrade(); }; }
 }
 document.addEventListener("cl-upgrade", (e) => { toast(e.detail, true); setTimeout(upgrade, 600); });

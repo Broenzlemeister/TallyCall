@@ -192,9 +192,10 @@ const sha = (t) => crypto.createHash("sha256").update(String(t)).digest("hex");
 const hits = new Map(); // einfache Zeitfenster-Bremse: Schlüssel -> Zeitpunkte
 const rate = (k, max, win) => { const n = (hits.get(k) || []).filter((t) => Date.now() - t < win); n.push(Date.now()); hits.set(k, n); return n.length > max; };
 const legalLine = () => { const l = site.legal || {}; return ["Tallycall", [l.name, l.street, [l.zip, l.city].filter(Boolean).join(" ")].filter(Boolean).join(", ")].filter(Boolean).join(" · "); };
+const fmtDate = (ms, u) => new Date(ms).toLocaleDateString(userLang(u) === "de" ? "de-DE" : "en-GB", { day: "numeric", month: "long", year: "numeric" });
 function mailWelcome(req, u) {
-  const t = Mail.T(userLang(u)), days = PLANS && !DIST && TRIAL_DAYS ? TRIAL_DAYS : 0;
-  return sendMail(u.email, t.welcomeSubject, { title: t.welcomeTitle, body: t.welcomeBody(u.name, days), button: { label: t.welcomeButton, url: baseUrl(req) + "/app" }, footer: t.service + "\n" + legalLine() });
+  const t = Mail.T(userLang(u)), end = PLANS && !DIST && TRIAL_DAYS ? fmtDate(u.created + TRIAL_DAYS * 86400000, u) : "";
+  return sendMail(u.email, t.welcomeSubject, { title: t.welcomeTitle, body: t.welcomeBody(u.name, end), button: { label: t.welcomeButton, url: baseUrl(req) + "/app" }, footer: t.service + "\n" + legalLine() });
 }
 function mailPasswordChanged(req, u) {
   const t = Mail.T(userLang(u));
@@ -221,6 +222,40 @@ function mailAnnounce(req, subject, body, kind, me) {
     job.done = true;
   })();
   return job;
+}
+
+// Automatische Mails rund um die Testphase: kurz vor dem Ende und nach dem Ende. Alte Konten bekommen nichts nachträglich.
+const priceText = () => `${site.price.amount} ${({ EUR: "€", USD: "$", GBP: "£", CHF: "CHF" }[site.price.currency] || site.price.currency || "")}`.trim();
+async function mailLifecycle() {
+  if (!mailOn() || DIST || !PLANS || !TRIAL_DAYS || !PUBLIC_URL) return;
+  const now = Date.now(), base = PUBLIC_URL, soonMs = Math.min(2, TRIAL_DAYS / 3) * 86400000;
+  for (const u of users) {
+    if (u.disabled || !u.email || isSiteAdmin(u) || (u.plan === "pro" && (!u.planUntil || u.planUntil > now))) continue;
+    const end = u.created + TRIAL_DAYS * 86400000, left = end - now, m = (u.mails = u.mails || {}), t = Mail.T(userLang(u));
+    const link = { label: "", url: `${base || ""}/app?upgrade=1` };
+    if (!m.soon && left > 0 && left <= soonMs) {
+      m.soon = now; store.saveUsers(users);
+      await sendMail(u.email, t.soonSubject, { title: t.soonTitle, body: t.soonBody(u.name, fmtDate(end, u), priceText()), button: { ...link, label: t.soonButton }, footer: t.service + "\n" + legalLine() });
+    } else if (!m.ended && left <= 0 && left > -3 * 86400000) {
+      m.ended = now; m.soon = m.soon || now; store.saveUsers(users);
+      await sendMail(u.email, t.endedSubject, { title: t.endedTitle, body: t.endedBody(u.name, priceText()), button: { ...link, label: t.endedButton }, footer: t.service + "\n" + legalLine() });
+    } else if (left <= -3 * 86400000 && !m.ended) { m.ended = m.soon = -1; store.saveUsers(users); } // schon lange abgelaufen: nichts nachsenden
+  }
+}
+if (require.main === module || process.env.TC_BOOT === "1") setInterval(() => mailLifecycle().catch((e) => console.error("Mail:", e.message)), Number(process.env.TC_MAIL_TICK_MS) || 600000).unref();
+
+// ---------- Feedback-Fenster ----------
+const fbStore = store.loadJson("feedback.json", { items: [] }), fbItems = fbStore.items || [];
+const fbSave = () => store.saveJson("feedback.json", { items: fbItems });
+const fbNew = () => fbItems.filter((x) => x.status === "new").length;
+let fbNotified = 0;
+function fbNotify(item) {
+  if (!mailOn() || (site.mail || {}).notify === false || Date.now() - fbNotified < 600000) return;
+  const to = (ADMIN_EMAILS.length ? ADMIN_EMAILS : users.filter(isSiteAdmin).map((u) => u.email)).filter(Boolean)[0]; if (!to) return;
+  fbNotified = Date.now();
+  const adm = users.find((u) => u.email === to), t = Mail.T(userLang(adm)), base = PUBLIC_URL || "";
+  const who = item.name ? `${item.name} <${item.email || "–"}>` : item.email || "anonymous";
+  sendMail(to, t.fbSubject(item.type), { title: t.fbTitle, body: `${item.type.toUpperCase()} · ${who}\n${item.page}\n\n${item.text}\n\n(${fbNew()} new in total)`, button: { label: "Admin", url: base + "/admin#feedback" } }).catch(() => {});
 }
 
 // ---------- Lizenzen ----------
@@ -362,7 +397,7 @@ function currentUser(req) {
   const u = s && userById(s.uid);
   return u && (u.sv || 0) === s.sv ? u : null;
 }
-const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, local: !!u.local, siteAdmin: isSiteAdmin(u), news: u.mailNews === true, ...planInfo(u) });
+const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, local: !!u.local, siteAdmin: isSiteAdmin(u), news: u.mailNews === true, ...(isSiteAdmin(u) ? { feedbackNew: fbNew() } : {}), ...planInfo(u) });
 function projectSummary(h, user) {
   const days = h.state.days, r = h.state.runtime, cur = h.state.days.flatMap((d) => d.events).find((e) => e.id === r.currentId);
   return { id: h.meta.id, name: h.meta.name, role: roleIn(h, user), days: days.length, events: days.reduce((n, d) => n + d.events.filter((e) => e.type !== "group").length, 0),
@@ -513,6 +548,14 @@ async function api(req, res, url, segs, user) {
     if (String(d.password || "").length < 8) return send(res, 400, { error: "Das Passwort braucht mindestens 8 Zeichen" });
     u.pass = auth.hashPassword(d.password); u.sv = (u.sv || 0) + 1; delete u.reset; store.saveUsers(users);
     if (mailOn()) mailPasswordChanged(req, u).catch(() => {});
+    return send(res, 200, { ok: true });
+  }
+  if (a === "feedback" && post) {
+    const d = await readBody(req), text = String(d.text || "").trim().slice(0, 2000);
+    if (!text) return send(res, 400, { error: "Bitte eine Nachricht eingeben" });
+    if (rate("fb:" + ip, user ? 20 : 6, 3600000)) return send(res, 429, { error: "Zu viele Nachrichten, bitte später erneut versuchen" });
+    const email = String(d.email || "").trim().slice(0, 120), item = { id: auth.id(5), t: Date.now(), type: ["bug", "idea", "other"].includes(d.type) ? d.type : "other", text, userId: user?.id || "", name: user?.name || "", email: user?.email || (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : ""), page: String(d.page || "").slice(0, 200), lang: String(d.lang || "").slice(0, 5), screen: String(d.screen || "").slice(0, 12), ua: String(req.headers["user-agent"] || "").slice(0, 200), status: "new", replies: [] };
+    fbItems.unshift(item); if (fbItems.length > 2000) fbItems.length = 2000; fbSave(); fbNotify(item);
     return send(res, 200, { ok: true });
   }
   // --- Geteilte Ansichten (per Link, ohne Login) ---
@@ -734,7 +777,7 @@ function projectAdmin(req, res, h, role, user, d) {
 async function siteAdminApi(req, res, segs, user, url) {
   if (!isSiteAdmin(user)) return send(res, 403, { error: "Nur für Server-Admins" });
   const post = req.method === "POST", [a] = segs;
-  const row = (u) => ({ id: u.id, name: u.name, email: u.email, siteAdmin: isSiteAdmin(u), disabled: !!u.disabled, plan: planOf(u), planSet: u.plan || "free", planUntil: u.planUntil || 0, created: u.created, lastLogin: u.lastLogin || 0,
+  const row = (u) => ({ trial: !isSiteAdmin(u) && planOf(u) === "pro" && u.plan !== "pro" ? trialUntil(u) : 0, id: u.id, name: u.name, email: u.email, siteAdmin: isSiteAdmin(u), disabled: !!u.disabled, plan: planOf(u), planSet: u.plan || "free", planUntil: u.planUntil || 0, created: u.created, lastLogin: u.lastLogin || 0,
     projects: [...hosts.values()].filter((h) => h.meta.members.some((m) => m.userId === u.id)).length, owned: ownedProjects(u) });
   if (a === "legal-preview") {
     const kind = url.searchParams.get("kind") === "impressum" ? "impressum" : "privacy", lang = url.searchParams.get("lang") === "en" ? "en" : "de";
@@ -750,6 +793,7 @@ async function siteAdminApi(req, res, segs, user, url) {
     return send(res, 200, { configured: mailOn(), cfg: { host: c.host, port: c.port, secure: c.secure, user: c.user, from: c.from, replyTo: c.replyTo, hasPass: !!c.pass }, env: { host: !!process.env.SMTP_HOST, pass: !!process.env.SMTP_PASS && !m.pass }, log: mailLog, job: mailJob,
       counts: { news: mailAudience("news").length, all: mailAudience("all").length, pro: mailAudience("pro").length, free: mailAudience("free").length } });
   }
+  if (a === "feedback") return send(res, 200, { items: fbItems, news: fbNew(), mail: mailOn() });
   if (a === "overview") {
     const now = Date.now(), live = [...hosts.values()].filter((h) => h.state.runtime.status === "running").length;
     const revenue = purchases.reduce((n, p) => n + (Number(p.amount) || 0), 0);
@@ -804,6 +848,18 @@ async function siteAdminApi(req, res, segs, user, url) {
     if ("oscPort" in d) { const v = d.oscPort === "" || d.oscPort == null ? null : Number(d.oscPort); if (v != null && !(Number.isInteger(v) && v >= 1024 && v <= 65535)) return send(res, 400, { error: "OSC-Port: Zahl zwischen 1024 und 65535 oder leer" }); site.oscPort = v; startOsc(); }
     saveSite();
     return send(res, 200, { ok: true, osc: oscState });
+  }
+  if (a === "feedback-status") { const it = fbItems.find((x) => x.id === d.id); if (!it) return send(res, 404, { error: "Nicht gefunden" }); it.status = d.status === "done" ? "done" : "new"; fbSave(); return send(res, 200, { ok: true, news: fbNew() }); }
+  if (a === "feedback-delete") { const i = fbItems.findIndex((x) => x.id === d.id); if (i >= 0) fbItems.splice(i, 1); fbSave(); return send(res, 200, { ok: true, news: fbNew() }); }
+  if (a === "feedback-reply") {
+    const it = fbItems.find((x) => x.id === d.id), text = String(d.text || "").trim().slice(0, 4000);
+    if (!it) return send(res, 404, { error: "Nicht gefunden" });
+    if (!it.email) return send(res, 400, { error: "Diese Person hat keine E-Mail-Adresse angegeben" });
+    if (!text) return send(res, 400, { error: "Bitte eine Antwort eingeben" });
+    if (!mailOn()) return send(res, 400, { error: "Bitte zuerst den Mailserver einrichten" });
+    const t = Mail.T(it.lang === "de" ? "de" : "en"), ok = await sendMail(it.email, t.replySubject, { title: t.replyTitle, body: `${text}\n\n— ${t.replyQuote}:\n${it.text}` });
+    if (!ok) return send(res, 502, { error: "Versand fehlgeschlagen: " + (mailLog[0]?.error || "unbekannter Fehler") });
+    it.replies.push({ t: Date.now(), by: user.name, text }); it.status = "done"; fbSave(); return send(res, 200, { ok: true, news: fbNew() });
   }
   if (a === "mail-settings") {
     const m = site.mail = site.mail || {}, str = (v, n) => String(v ?? "").trim().slice(0, n);

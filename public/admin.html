@@ -13,7 +13,7 @@
 <div class="wrap" style="max-width:1300px">
   <div class="stat" id="stats"></div>
   <div class="card" style="margin-top:14px">
-    <div class="ptabs"><button data-tab="u">Nutzer</button><button data-tab="k">Käufe</button><button data-tab="p">Projekte</button><button data-tab="s">Einstellungen</button><button data-tab="l">Rechtliches</button><button data-tab="z">Lizenz</button><button data-tab="m">Mail</button><button data-tab="c">Hilfe</button></div>
+    <div class="ptabs"><button data-tab="u">Nutzer</button><button data-tab="k">Käufe</button><button data-tab="p">Projekte</button><button data-tab="s">Einstellungen</button><button data-tab="l">Rechtliches</button><button data-tab="z">Lizenz</button><button data-tab="m">Mail</button><button data-tab="f">Feedback <span id="fbBadge" class="pill pro" hidden></span></button><button data-tab="c">Hilfe</button></div>
     <div data-pane="u">
       <div class="row2" style="margin-bottom:10px"><input id="q" placeholder="Suchen (Name, E-Mail)" style="max-width:280px"><select id="fPlan" style="width:auto"><option value="">Alle Pläne</option><option value="pro">Pro</option><option value="free">Free</option></select><span class="hint">Pro-Plan ohne Ablauf = unbegrenzt. Server-Admins haben immer Pro.</span></div>
       <table class="tbl"><thead><tr><th>Nutzer</th><th>Plan</th><th>Projekte</th><th>Registriert</th><th>Zuletzt aktiv</th><th class="r">Aktionen</th></tr></thead><tbody id="users"></tbody></table>
@@ -78,6 +78,9 @@
     <div data-pane="m" hidden>
       <div id="mailBox"><p class="hint">Wird geladen …</p></div>
     </div>
+    <div data-pane="f" hidden>
+      <div id="fbBox"><p class="hint">Wird geladen …</p></div>
+    </div>
     <div data-pane="c" hidden>
       <h3 style="margin-top:0">Bezahlung einrichten</h3>
       <ol class="hint" style="line-height:1.7;padding-left:18px;margin:0">
@@ -114,7 +117,7 @@ function draw() {
   $("stats").innerHTML = [[s.users, "Nutzer"], [s.pro, "Pro-Konten"], [s.newWeek, "neu diese Woche"], [s.projects, "Projekte"], [s.live, "laufende Shows"], [s.purchases, "Käufe"], [(s.revenue || 0).toLocaleString(I18N.locale, { minimumFractionDigits: 2 }) + " " + (s.currency || ""), "Umsatz"]].map(([v, l]) => `<div class="k"><b translate="no">${E(v)}</b><span>${l}</span></div>`).join("");
   const q = $("q").value.toLowerCase(), fp = $("fPlan").value;
   $("users").innerHTML = data.users.filter((u) => (!q || (u.name + " " + u.email).toLowerCase().includes(q)) && (!fp || u.plan === fp)).map((u) => `<tr data-id="${E(u.id)}"><td><b translate="no">${E(u.name)}</b> ${u.siteAdmin ? '<span class="pill pro">Server-Admin</span>' : ""} ${u.disabled ? '<span class="pill bad">gesperrt</span>' : ""}<div class="hint" translate="no">${E(u.email)}</div></td>
-    <td><span class="pill ${u.plan === "pro" ? "pro" : ""}">${u.plan === "pro" ? "Pro" : "Free"}</span>${u.planSet === "pro" && u.planUntil ? `<div class="hint">bis ${dt(u.planUntil)}</div>` : u.planSet === "pro" ? '<div class="hint">unbegrenzt</div>' : ""}</td>
+    <td><span class="pill ${u.plan === "pro" ? "pro" : ""}">${u.plan === "pro" ? "Pro" : "Free"}</span>${u.planSet === "pro" && u.planUntil ? `<div class="hint">bis ${dt(u.planUntil)}</div>` : u.planSet === "pro" ? '<div class="hint">unbegrenzt</div>' : u.trial ? `<div class="hint">Test bis ${dt(u.trial)}</div>` : ""}</td>
     <td translate="no">${u.projects} <span class="hint">(${u.owned} eigene)</span></td><td translate="no">${dt(u.created)}</td><td translate="no">${dt(u.lastLogin)}</td>
     <td><div class="acts"><button class="sm" data-a="plan">Plan …</button>${data.config.adminLocked ? "" : `<button class="sm ghost" data-a="admin">${u.siteAdmin ? "Admin entziehen" : "Zum Admin"}</button>`}<button class="sm ghost" data-a="pw">Passwort</button><button class="sm ghost" data-a="disable">${u.disabled ? "Entsperren" : "Sperren"}</button><button class="sm ghost stop" data-a="del">Löschen</button></div></td></tr>`).join("") || '<tr><td colspan="6" class="hint">Keine Nutzer.</td></tr>';
   $("purch").innerHTML = data.purchases.map((p) => `<tr><td translate="no">${dtt(p.t)}</td><td translate="no">${E(p.email)}${p.userId ? "" : ' <span class="pill">noch kein Konto</span>'}</td><td>${p.plan === "pro" ? '<span class="pill pro">Pro</span>' : '<span class="pill">Free</span>'}</td><td translate="no">${p.plan === "free" ? "–" : p.months ? p.months + " " + I18N.t("Monate") : I18N.t("unbegrenzt")}</td><td translate="no">${p.amount ? p.amount.toLocaleString(I18N.locale, { minimumFractionDigits: 2 }) + " " + E(p.currency) : "–"}</td><td>${p.source === "stripe" ? "Stripe" : I18N.t("manuell") + (p.by ? " (" + E(p.by) + ")" : "")}</td><td class="hint mono" translate="no">${E(p.ref)}</td></tr>`).join("") || '<tr><td colspan="7" class="hint">Noch keine Käufe.</td></tr>';
@@ -246,6 +249,34 @@ load();
     }
   });
   document.querySelector('[data-tab="m"]').addEventListener("click", get);
+})();
+</script>
+<script>
+// Reiter „Feedback“: Nachrichten aus dem Feedback-Fenster, Antworten per Mail, erledigen, löschen
+(() => {
+  let F = null, filter = "new";
+  const box = $("fbBox"), TYPES = { bug: "Fehler", idea: "Idee", other: "Sonstiges" };
+  const badge = (n) => { const b = $("fbBadge"); b.hidden = !n; b.textContent = n; };
+  async function get() { const r = await fetch("/api/admin/feedback"); if (r.ok) { F = await r.json(); badge(F.news); draw(); } }
+  const run = (path, body, msg) => post(path, body).then((j) => { if (msg) toast(msg); return get().then(() => j); }).catch((e) => toast(e.message, true));
+  function draw() {
+    const list = F.items.filter((x) => filter === "all" || x.status === "new");
+    box.innerHTML = `<div class="row2" style="margin-bottom:12px"><span class="seg" id="fbF"><button data-v="new" aria-pressed="${filter === "new"}">Neu (${F.news})</button><button data-v="all" aria-pressed="${filter === "all"}">Alle (${F.items.length})</button></span><span class="hint">Nachrichten aus dem Fenster unten links. Antworten gehen per E-Mail an die angegebene Adresse.</span></div>` +
+      (list.map((x) => `<div class="card" data-id="${E(x.id)}" style="margin:0 0 10px;padding:14px 16px"><div class="row2" style="gap:10px;align-items:center;flex-wrap:wrap"><span class="pill ${x.type === "bug" ? "bad" : x.type === "idea" ? "pro" : ""}">${TYPES[x.type]}</span><b translate="no">${E(x.name || "Gast")}</b><span class="hint" translate="no">${E(x.email)}</span><span class="hint">${dtt(x.t)}</span><span class="hint" translate="no">${E(x.page)}</span><span style="flex:1"></span>${x.status === "done" ? '<span class="pill">erledigt</span>' : ""}</div>
+        <p style="white-space:pre-wrap;margin:10px 0 8px" translate="no">${E(x.text)}</p>
+        <div class="hint" translate="no" style="margin-bottom:8px">${E(x.lang)} · ${E(x.screen)} · ${E((x.ua || "").slice(0, 90))}</div>
+        ${x.replies.map((r) => `<div class="hint" style="border-left:3px solid var(--line3);padding-left:10px;margin:6px 0" translate="no">Antwort von ${E(r.by)} (${dtt(r.t)}): ${E(r.text)}</div>`).join("")}
+        <div class="row2" style="gap:8px">${x.email && F.mail ? '<button class="sm" data-a="reply">Antworten</button>' : ""}<button class="sm" data-a="done">${x.status === "done" ? "Wieder öffnen" : "Erledigt"}</button><button class="sm stop" data-a="del">Löschen</button></div></div>`).join("") || '<p class="hint">Keine Nachrichten.</p>');
+  }
+  box.addEventListener("click", async (e) => {
+    const f = e.target.closest("#fbF button"); if (f) { filter = f.dataset.v; return draw(); }
+    const b = e.target.closest("[data-a]"); if (!b) return; const id = b.closest("[data-id]").dataset.id, it = F.items.find((x) => x.id === id);
+    if (b.dataset.a === "done") return run("/api/admin/feedback-status", { id, status: it.status === "done" ? "new" : "done" });
+    if (b.dataset.a === "del") { if (confirm("Diese Nachricht löschen?")) run("/api/admin/feedback-delete", { id }, "Gelöscht"); return; }
+    if (b.dataset.a === "reply") modal("Antworten an " + (it.name || it.email), `<p class="hint" style="white-space:pre-wrap;margin-top:0" translate="no">${E(it.text)}</p><label>Deine Antwort (geht per E-Mail an ${E(it.email)})</label><textarea id="fbText" rows="6"></textarea>`, [{ label: "Abbrechen" }, { label: "Senden", cls: "primary", fn: async (close, bg) => { try { await post("/api/admin/feedback-reply", { id, text: bg.querySelector("#fbText").value }); close(); toast("Antwort gesendet"); get(); } catch (x) { toast(x.message, true); } } }]);
+  });
+  document.querySelector('[data-tab="f"]').addEventListener("click", get);
+  get().then(() => { if (location.hash === "#feedback") document.querySelector('[data-tab="f"]').click(); });
 })();
 </script>
 </body></html>
