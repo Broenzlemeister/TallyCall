@@ -1,0 +1,39 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><link rel="stylesheet" href="/app.css"><link rel="icon" href="/favicon.svg"><title>Passwort zurücksetzen · Tallycall</title>
+<style>
+body { min-height:100vh; display:grid; place-items:center; padding:24px; }
+.box { width:100%; max-width:420px; display:grid; gap:18px; }
+.box h1 { font-size:28px; letter-spacing:-.03em; margin:0; } .box form { display:grid; gap:2px; }
+.err { background:#2a1517; border:1px solid #4a2327; color:#ffb3b3; padding:9px 12px; border-radius:var(--r2); font-size:13.5px; }
+.ok { background:#10241a; border:1px solid #1f4a33; color:#9be8bd; padding:9px 12px; border-radius:var(--r2); font-size:13.5px; }
+.alt { color:var(--mute); font-size:13.5px; }
+</style></head>
+<body>
+<main class="box">
+  <div style="display:flex;justify-content:space-between;align-items:center"><a class="brand" href="/"><img src="/logo.svg" alt="">Tallycall</a><select id="langSel" aria-label="Sprache" style="width:auto;padding:5px 26px 5px 10px;font-size:13px"></select></div>
+  <div><h1 id="h">Passwort vergessen?</h1><p class="hint" id="sub" style="margin:6px 0 0">Gib deine E-Mail-Adresse ein. Wir senden dir einen Link, mit dem du ein neues Passwort wählst.</p></div>
+  <div class="err" id="err" hidden></div><div class="ok" id="ok" hidden></div>
+  <form id="f" novalidate>
+    <div id="rowEmail"><label for="email">E-Mail</label><input id="email" type="email" autocomplete="email" required></div>
+    <div id="rowPw" hidden><label for="pw">Neues Passwort</label><input id="pw" type="password" autocomplete="new-password" placeholder="mindestens 8 Zeichen"><label for="pw2">Passwort wiederholen</label><input id="pw2" type="password" autocomplete="new-password"></div>
+    <button class="primary lg" id="go" style="margin-top:16px">Link senden</button>
+  </form>
+  <p class="alt"><a href="/login">Zurück zur Anmeldung</a></p>
+</main>
+<script src="/i18n.js"></script>
+<script>
+const $ = (i) => document.getElementById(i), token = new URLSearchParams(location.search).get("token"), reset = location.pathname.startsWith("/reset");
+const t = (k) => I18N.t(k);
+if (reset) { $("h").textContent = t("Neues Passwort wählen"); $("sub").textContent = t("Wähle ein Passwort mit mindestens 8 Zeichen."); $("rowEmail").hidden = true; $("rowPw").hidden = false; $("go").textContent = t("Passwort speichern"); if (!token) { $("err").hidden = false; $("err").textContent = t("Dieser Link ist ungültig. Bitte fordere einen neuen an."); $("go").disabled = true; } }
+fetch("/api/config").then((r) => r.json()).then((c) => { if (!reset && !c.mail) { $("err").hidden = false; $("err").textContent = t("Auf diesem Server ist der E-Mail-Versand nicht eingerichtet. Bitte den Admin bitten, das Passwort zurückzusetzen."); $("go").disabled = true; } }).catch(() => {});
+$("f").addEventListener("submit", async (e) => {
+  e.preventDefault(); $("err").hidden = true; $("go").disabled = true;
+  try {
+    if (reset && $("pw").value !== $("pw2").value) throw new Error(t("Die Passwörter stimmen nicht überein"));
+    const r = await fetch("/api/" + (reset ? "reset" : "forgot"), { method: "POST", headers: { "Content-Type": "application/json", "x-cl": "1" }, body: JSON.stringify(reset ? { token, password: $("pw").value } : { email: $("email").value, lang: I18N.lang }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || "Das hat nicht geklappt");
+    if (reset) location.href = "/login?reset=1";
+    else { $("ok").hidden = false; $("ok").textContent = t("Falls es zu dieser Adresse ein Konto gibt, haben wir dir eine E-Mail mit einem Link geschickt. Er gilt 1 Stunde."); $("f").hidden = true; }
+  } catch (err) { $("err").hidden = false; $("err").textContent = err.message; $("go").disabled = false; }
+});
+</script></body></html>

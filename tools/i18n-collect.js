@@ -19,6 +19,8 @@ const PORT = 4097, U = `http://localhost:${PORT}`, DATA = "/tmp/sw-collect-" + D
   // Anmeldung / Registrierung
   let pg = await open("/", 600); await grab(pg); await pg.close();
   pg = await open("/login", 500); await pg.fill("#email", "x@y.de"); await pg.fill("#pw", "falsch123"); await pg.click("#go"); await pg.waitForTimeout(600); await grab(pg); await pg.close();
+  pg = await open("/forgot", 500); await grab(pg); await pg.close();
+  pg = await open("/reset?token=x", 500); await grab(pg); await pg.close();
   pg = await open("/signup", 500); await pg.fill("#name", "Anna Test"); await pg.fill("#email", "anna@test.de"); await pg.fill("#pw", "kurz"); await pg.click("#go"); await pg.waitForTimeout(600); await grab(pg);
   await pg.fill("#pw", "geheim1234"); await pg.click("#go"); await pg.waitForURL("**/app"); await pg.waitForTimeout(500); await grab(pg);
   await step("newproj", async () => { await pg.click("[data-new]"); await pg.waitForTimeout(300); await grab(pg); await pg.click(".modal .primary"); await pg.waitForTimeout(500); await grab(pg); await pg.fill("#npName", "Gala 2026"); await pg.click(".modal .primary"); await pg.waitForURL(/\/p\/.+\//); });

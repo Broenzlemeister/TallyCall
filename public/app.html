@@ -54,9 +54,9 @@ function newProject() {
 }
 function account() {
   if (me.local) return modal("Lokaler Modus", "<p>Dieser Server läuft ohne Konten. Jeder im Netzwerk hat vollen Zugriff.</p>", [{ label: "Schließen", cls: "primary" }]);
-  modal("Konto", `<p class="hint" style="margin-top:0">${E(me.email)}</p><label>Name</label><input id="acName" value="${E(me.name)}"><label>Aktuelles Passwort</label><input id="acCur" type="password" autocomplete="current-password"><label>Neues Passwort (optional)</label><input id="acNew" type="password" autocomplete="new-password" placeholder="mindestens 8 Zeichen">`,
+  modal("Konto", `<p class="hint" style="margin-top:0">${E(me.email)}</p><label>Name</label><input id="acName" value="${E(me.name)}"><label>Aktuelles Passwort</label><input id="acCur" type="password" autocomplete="current-password"><label>Neues Passwort (optional)</label><input id="acNew" type="password" autocomplete="new-password" placeholder="mindestens 8 Zeichen"><label style="display:flex;gap:10px;align-items:flex-start;font-weight:400;margin-top:16px"><input type="checkbox" id="acNews" style="width:auto;margin-top:3px"${me.news ? " checked" : ""}><span>Produktneuigkeiten per E-Mail</span></label>`,
     [{ label: "Abmelden", cls: "danger", fn: async () => { await post("/api/logout", {}); location.href = "/"; } }, { label: "Abbrechen" }, { label: "Speichern", cls: "primary", fn: async (close, bg) => {
-      try { const body = { name: bg.querySelector("#acName").value }; const n = bg.querySelector("#acNew").value; if (n) { body.password = n; body.current = bg.querySelector("#acCur").value; } const r = await post("/api/account", body); me = r.user; paintUser(); close(); toast("Gespeichert"); } catch (e) { toast(e.message, true); } } }]);
+      try { const body = { name: bg.querySelector("#acName").value, news: bg.querySelector("#acNews").checked }; const n = bg.querySelector("#acNew").value; if (n) { body.password = n; body.current = bg.querySelector("#acCur").value; } const r = await post("/api/account", body); me = r.user; paintUser(); close(); toast("Gespeichert"); } catch (e) { toast(e.message, true); } } }]);
 }
 function upgrade() {
   if (!me.enforced || (me.local && !me.license)) return;

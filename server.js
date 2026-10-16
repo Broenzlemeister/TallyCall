@@ -12,6 +12,7 @@ const Trig = require("./lib/triggers.js");
 const Legal = require("./lib/legal.js");
 const Md = require("./lib/md.js");
 const License = require("./lib/license.js");
+const Mail = require("./lib/mail.js");
 
 const PORT = Number(process.env.PORT) || 4001;
 const HOST = process.env.HOST || "0.0.0.0";
@@ -43,8 +44,8 @@ const SECRET = auth.loadSecret(DATA);
 
 // Server-Einstellungen, die der Admin im Browser ändert (data/site.json): Rechtstexte, Preis, Zahlungslink, OSC-Port, Registrierung
 const site = (() => {
-  const d = { legal: Legal.DEFAULTS(), payLink: "", price: { amount: "7,99", currency: "EUR" }, oscPort: null, signup: null }, s = store.loadSite() || {};
-  return { ...d, ...s, legal: { ...d.legal, ...(s.legal || {}) }, price: { ...d.price, ...(s.price || {}) } };
+  const d = { legal: Legal.DEFAULTS(), payLink: "", price: { amount: "7,99", currency: "EUR" }, oscPort: null, signup: null, mail: {} }, s = store.loadSite() || {};
+  return { ...d, ...s, legal: { ...d.legal, ...(s.legal || {}) }, price: { ...d.price, ...(s.price || {}) }, mail: { ...(s.mail || {}) } };
 })();
 const saveSite = () => store.saveSite(site);
 const payLink = () => (DIST && BUILD.buy) || site.payLink || PAY_LINK_ENV;
@@ -156,6 +157,70 @@ function licenseCheck(req, res, ip) {
     const renew = rec.until !== (Number(v.payload.exp) || 0) && (!rec.until || rec.until > (Number(v.payload.exp) || 0));
     return send(res, 200, { ok: true, until: rec.until, ...(renew ? { key: License.sign({ id: rec.id, name: rec.customer, email: rec.email, exp: rec.until, max: rec.max || 1, inst: v.payload.inst || "" }, ISSUER_PRIV) } : {}) });
   }).catch((e) => send(res, 400, { error: e.message }));
+}
+
+// ---------- E-Mail (SMTP) ----------
+// Einstellungen: Verwaltung → Mail oder Umgebungsvariablen SMTP_HOST, SMTP_PORT, SMTP_SECURE (starttls|tls|none), SMTP_USER, SMTP_PASS, SMTP_FROM, SMTP_REPLY_TO
+const mailCfg = () => {
+  const m = site.mail || {}, e = process.env;
+  const secure = ["starttls", "tls", "none"].includes(m.secure) ? m.secure : ["starttls", "tls", "none"].includes(e.SMTP_SECURE) ? e.SMTP_SECURE : "starttls";
+  return { host: m.host || e.SMTP_HOST || "", port: Number(m.port || e.SMTP_PORT) || (secure === "tls" ? 465 : 587), secure, user: m.user ?? e.SMTP_USER ?? "", pass: m.pass || e.SMTP_PASS || "", from: m.from || e.SMTP_FROM || "", replyTo: m.replyTo || e.SMTP_REPLY_TO || "", insecureTls: process.env.SMTP_INSECURE_TLS === "1" };
+};
+const mailOn = () => { const c = mailCfg(); return !!(c.host && c.from); };
+const mailLog = []; // letzte Versandergebnisse für die Verwaltung
+const mailQueue = []; let mailBusy = false;
+function mailPump() {
+  if (mailBusy || !mailQueue.length) return; mailBusy = true;
+  const job = mailQueue.shift();
+  const attempt = (n) => Mail.smtpSend(mailCfg(), job.msg).then(() => { mailLog.unshift({ t: Date.now(), to: job.msg.to, subject: job.msg.subject, ok: true }); job.resolve(true); }, (err) => {
+    if (n < 2) return new Promise((r) => setTimeout(r, n ? 5000 : 2000)).then(() => attempt(n + 1));
+    mailLog.unshift({ t: Date.now(), to: job.msg.to, subject: job.msg.subject, ok: false, error: err.message }); job.resolve(false, err);
+  }).finally(() => { mailLog.length = Math.min(mailLog.length, 100); });
+  attempt(0).finally(() => { mailBusy = false; setTimeout(mailPump, job.gap || 0); });
+}
+// Legt eine Mail in die Warteschlange. Gibt ein Versprechen zurück: true = gesendet, false = fehlgeschlagen (nach 3 Versuchen).
+function sendMail(to, subject, parts, { headers, gap } = {}) {
+  const c = mailCfg(); if (!(c.host && c.from)) return Promise.resolve(false);
+  const { html, text } = Mail.layout({ title: parts.title || subject, body: parts.body, button: parts.button, footer: parts.footer });
+  return new Promise((resolve) => { mailQueue.push({ msg: { from: c.from, to, subject, text, html, replyTo: c.replyTo, headers }, resolve: (ok) => resolve(ok), gap }); mailPump(); });
+}
+const LANG_IDS = ["en", "de", "es", "fr", "it", "pt", "zh", "ja"];
+const userLang = (u) => (u && u.lang === "de" ? "de" : "en"); // Mailtexte gibt es auf Deutsch und Englisch
+const unsubToken = (u) => crypto.createHmac("sha256", SECRET).update("unsub:" + u.id).digest("base64url").slice(0, 32);
+const unsubUrl = (req, u) => `${baseUrl(req)}/unsubscribe?u=${u.id}&t=${unsubToken(u)}`;
+const sha = (t) => crypto.createHash("sha256").update(String(t)).digest("hex");
+const hits = new Map(); // einfache Zeitfenster-Bremse: Schlüssel -> Zeitpunkte
+const rate = (k, max, win) => { const n = (hits.get(k) || []).filter((t) => Date.now() - t < win); n.push(Date.now()); hits.set(k, n); return n.length > max; };
+const legalLine = () => { const l = site.legal || {}; return ["Tallycall", [l.name, l.street, [l.zip, l.city].filter(Boolean).join(" ")].filter(Boolean).join(", ")].filter(Boolean).join(" · "); };
+function mailWelcome(req, u) {
+  const t = Mail.T(userLang(u)), days = PLANS && !DIST && TRIAL_DAYS ? TRIAL_DAYS : 0;
+  return sendMail(u.email, t.welcomeSubject, { title: t.welcomeTitle, body: t.welcomeBody(u.name, days), button: { label: t.welcomeButton, url: baseUrl(req) + "/app" }, footer: t.service + "\n" + legalLine() });
+}
+function mailPasswordChanged(req, u) {
+  const t = Mail.T(userLang(u));
+  return sendMail(u.email, t.changedSubject, { title: t.changedTitle, body: t.changedBody(u.name), button: { label: t.changedButton, url: baseUrl(req) + "/forgot" }, footer: t.service + "\n" + legalLine() });
+}
+let mailJob = null; // laufender oder letzter Rundversand
+function mailAudience(kind) {
+  const act = users.filter((u) => !u.disabled && u.email);
+  if (kind === "news") return act.filter((u) => u.mailNews === true);
+  if (kind === "all") return act;
+  if (kind === "pro") return act.filter((u) => planOf(u) === "pro" && !isSiteAdmin(u));
+  if (kind === "free") return act.filter((u) => planOf(u) === "free");
+  return [];
+}
+function mailAnnounce(req, subject, body, kind, me) {
+  const list = kind === "me" ? [me] : mailAudience(kind), job = { id: auth.id(4), subject, kind, total: list.length, sent: 0, failed: 0, done: !list.length, started: Date.now() };
+  mailJob = job;
+  (async () => {
+    for (const u of list) {
+      const lang = userLang(u), t = Mail.T(lang), unsub = unsubUrl(req, u);
+      const ok = await sendMail(u.email, subject, { title: subject, body: body.replace(/\{name\}/g, u.name), footer: (kind === "news" || kind === "me" ? `${t.unsubscribe}: ${unsub}` : t.service) + "\n" + legalLine() }, { headers: { "List-Unsubscribe": `<${unsub}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" }, gap: 300 });
+      ok ? job.sent++ : job.failed++;
+    }
+    job.done = true;
+  })();
+  return job;
 }
 
 // ---------- Lizenzen ----------
@@ -297,7 +362,7 @@ function currentUser(req) {
   const u = s && userById(s.uid);
   return u && (u.sv || 0) === s.sv ? u : null;
 }
-const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, local: !!u.local, siteAdmin: isSiteAdmin(u), ...planInfo(u) });
+const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, local: !!u.local, siteAdmin: isSiteAdmin(u), news: u.mailNews === true, ...planInfo(u) });
 function projectSummary(h, user) {
   const days = h.state.days, r = h.state.runtime, cur = h.state.days.flatMap((d) => d.events).find((e) => e.id === r.currentId);
   return { id: h.meta.id, name: h.meta.name, role: roleIn(h, user), days: days.length, events: days.reduce((n, d) => n + d.events.filter((e) => e.type !== "group").length, 0),
@@ -361,7 +426,7 @@ async function api(req, res, url, segs, user) {
   if (req.method === "OPTIONS") { res.writeHead(204, { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "Authorization, Content-Type, x-cl", "Access-Control-Allow-Methods": "GET, POST, OPTIONS" }); return res.end(); }
 
   if (a === "health") return send(res, 200, { ok: true });
-  if (a === "config") return send(res, 200, { auth: AUTH_ON, signup: signupOpen(), plans: PLANS, payLink: payLink(), portalLink: portalLink(), price: site.price });
+  if (a === "config") return send(res, 200, { auth: AUTH_ON, mail: mailOn(), signup: signupOpen(), plans: PLANS, payLink: payLink(), portalLink: portalLink(), price: site.price });
   if (a === "stripe" && b === "webhook" && post) return stripeWebhook(req, res);
   if (a === "license" && b === "check" && post) return licenseCheck(req, res, ip);
 
@@ -406,8 +471,9 @@ async function api(req, res, url, segs, user) {
     if (String(d.password || "").length < 8) return send(res, 400, { error: "Das Passwort braucht mindestens 8 Zeichen" });
     if (userByEmail(email)) { fail("su:" + ip); return send(res, 409, { error: "Mit dieser E-Mail gibt es schon ein Konto" }); }
     // Das erste Konto und die in ADMIN_EMAIL genannten Adressen verwalten den Server
-    const u = { id: auth.id(6), email, name, pass: auth.hashPassword(d.password), sv: 0, created: Date.now(), lastLogin: Date.now(), siteAdmin: !ADMIN_EMAILS.length && !users.length, plan: "free", planUntil: 0 };
+    const u = { id: auth.id(6), email, name, pass: auth.hashPassword(d.password), sv: 0, created: Date.now(), lastLogin: Date.now(), siteAdmin: !ADMIN_EMAILS.length && !users.length, plan: "free", planUntil: 0, lang: LANG_IDS.includes(d.lang) ? d.lang : "en", mailNews: d.news === true };
     users.push(u); store.saveUsers(users); applyInvites(u); applyPendingPurchases(u);
+    if (mailOn()) mailWelcome(req, u).catch(() => {});
     return send(res, 200, { user: publicUser(u) }, { "Set-Cookie": auth.cookie("cl", auth.makeSession(SECRET, u), { secure: secureReq(req) }) });
   }
   if (a === "login" && post) {
@@ -423,6 +489,32 @@ async function api(req, res, url, segs, user) {
   }
   if (a === "logout" && post) return send(res, 200, { ok: true }, { "Set-Cookie": auth.cookie("cl", "", { secure: secureReq(req), maxAge: 0 }) });
 
+  // Passwort vergessen: immer dieselbe Antwort, damit sich nicht herausfinden lässt, welche Adressen ein Konto haben
+  if (a === "forgot" && post) {
+    if (!AUTH_ON) return send(res, 400, { error: "Anmeldung ist im lokalen Modus nicht nötig" });
+    if (!mailOn()) return send(res, 503, { error: "Auf diesem Server ist der E-Mail-Versand nicht eingerichtet. Bitte den Admin bitten, das Passwort zurückzusetzen." });
+    const d = await readBody(req), email = String(d.email || "").trim().toLowerCase();
+    if (rate("fg:" + ip, 8, 600000)) return send(res, 429, { error: "Zu viele Versuche, bitte später erneut versuchen" });
+    const u = userByEmail(email);
+    if (u && !u.disabled && !rate("fgu:" + u.id, 1, 60000)) {
+      const tok = auth.token(32); u.reset = { h: sha(tok), exp: Date.now() + 3600000 };
+      if (LANG_IDS.includes(d.lang)) u.lang = d.lang;
+      store.saveUsers(users);
+      const t = Mail.T(userLang(u));
+      sendMail(u.email, t.resetSubject, { title: t.resetTitle, body: t.resetBody(u.name), button: { label: t.resetButton, url: `${baseUrl(req)}/reset?token=${tok}` }, footer: t.service + "\n" + legalLine() }).catch(() => {});
+    }
+    return send(res, 200, { ok: true });
+  }
+  if (a === "reset" && post) {
+    if (!AUTH_ON) return send(res, 400, { error: "Anmeldung ist im lokalen Modus nicht nötig" });
+    if (rate("rs:" + ip, 20, 600000)) return send(res, 429, { error: "Zu viele Versuche, bitte später erneut versuchen" });
+    const d = await readBody(req), h = sha(d.token || ""), u = users.find((x) => x.reset && x.reset.h === h);
+    if (!u || u.reset.exp < Date.now() || u.disabled) return send(res, 400, { error: "Dieser Link ist ungültig oder abgelaufen. Bitte einen neuen anfordern." });
+    if (String(d.password || "").length < 8) return send(res, 400, { error: "Das Passwort braucht mindestens 8 Zeichen" });
+    u.pass = auth.hashPassword(d.password); u.sv = (u.sv || 0) + 1; delete u.reset; store.saveUsers(users);
+    if (mailOn()) mailPasswordChanged(req, u).catch(() => {});
+    return send(res, 200, { ok: true });
+  }
   // --- Geteilte Ansichten (per Link, ohne Login) ---
   if (a === "s") {
     const h = [...hosts.values()].find((x) => x.meta.shares.some((s) => s.token === b && !s.revoked));
@@ -459,7 +551,9 @@ async function api(req, res, url, segs, user) {
       if (String(d.password).length < 8) return send(res, 400, { error: "Das neue Passwort braucht mindestens 8 Zeichen" });
       user.pass = auth.hashPassword(d.password); user.sv = (user.sv || 0) + 1; // andere Sitzungen enden
       headers = { "Set-Cookie": auth.cookie("cl", auth.makeSession(SECRET, user), { secure: secureReq(req) }) };
+      if (mailOn()) mailPasswordChanged(req, user).catch(() => {});
     }
+    if ("news" in d) user.mailNews = d.news === true;
     store.saveUsers(users);
     return send(res, 200, { user: publicUser(user) }, headers);
   }
@@ -651,6 +745,11 @@ async function siteAdminApi(req, res, segs, user, url) {
     return send(res, 200, { dist: DIST, state: st.state, pro: st.pro, reason: st.reason || "", daysLeft: st.daysLeft ?? null, customer: st.payload?.name || "", email: st.payload?.email || "", until: st.payload?.exp || 0, key: mask(lic.key), checked: lic.checked || 0, instance: licInst.id, buy: BUILD?.buy || "", issuer: { enabled: !!ISSUER_PRIV, pub: issuerPub(), url: PUBLIC_URL },
       records: ISSUER_PRIV ? licRecords.map((r) => ({ ...r })).sort((x, y) => y.created - x.created) : [] });
   }
+  if (a === "mail") {
+    const c = mailCfg(), m = site.mail || {};
+    return send(res, 200, { configured: mailOn(), cfg: { host: c.host, port: c.port, secure: c.secure, user: c.user, from: c.from, replyTo: c.replyTo, hasPass: !!c.pass }, env: { host: !!process.env.SMTP_HOST, pass: !!process.env.SMTP_PASS && !m.pass }, log: mailLog, job: mailJob,
+      counts: { news: mailAudience("news").length, all: mailAudience("all").length, pro: mailAudience("pro").length, free: mailAudience("free").length } });
+  }
   if (a === "overview") {
     const now = Date.now(), live = [...hosts.values()].filter((h) => h.state.runtime.status === "running").length;
     const revenue = purchases.reduce((n, p) => n + (Number(p.amount) || 0), 0);
@@ -705,6 +804,33 @@ async function siteAdminApi(req, res, segs, user, url) {
     if ("oscPort" in d) { const v = d.oscPort === "" || d.oscPort == null ? null : Number(d.oscPort); if (v != null && !(Number.isInteger(v) && v >= 1024 && v <= 65535)) return send(res, 400, { error: "OSC-Port: Zahl zwischen 1024 und 65535 oder leer" }); site.oscPort = v; startOsc(); }
     saveSite();
     return send(res, 200, { ok: true, osc: oscState });
+  }
+  if (a === "mail-settings") {
+    const m = site.mail = site.mail || {}, str = (v, n) => String(v ?? "").trim().slice(0, n);
+    if ("host" in d) { const v = str(d.host, 200); if (v && !/^[a-z0-9.-]+$/i.test(v)) return send(res, 400, { error: "Bitte einen gültigen Servernamen eingeben" }); m.host = v; }
+    if ("port" in d) { const v = d.port === "" ? "" : Number(d.port); if (v !== "" && !(Number.isInteger(v) && v > 0 && v < 65536)) return send(res, 400, { error: "Bitte einen gültigen Port eingeben" }); m.port = v; }
+    if ("secure" in d && ["starttls", "tls", "none"].includes(d.secure)) m.secure = d.secure;
+    if ("user" in d) m.user = str(d.user, 200);
+    if (d.pass) m.pass = String(d.pass).slice(0, 300); if (d.clearPass) m.pass = "";
+    if ("from" in d) { const v = str(d.from, 200); if (v && !/^[^<>\r\n]+<[^<>\s@]+@[^<>\s@]+>$|^[^<>\s@]+@[^<>\s@]+$/.test(v)) return send(res, 400, { error: "Absender: bitte eine Adresse wie no-reply@tallycall.com oder Tallycall <no-reply@tallycall.com> eingeben" }); m.from = v; }
+    if ("replyTo" in d) m.replyTo = str(d.replyTo, 200);
+    saveSite(); return send(res, 200, { ok: true, configured: mailOn() });
+  }
+  if (a === "mail-test") {
+    if (!mailOn()) return send(res, 400, { error: "Bitte zuerst Server und Absender eintragen" });
+    const t = Mail.T(userLang(user)), ok = await sendMail(user.email || String(d.to || ""), t.testSubject, { title: t.testTitle, body: t.testBody(), footer: legalLine() });
+    const last = mailLog[0];
+    return ok ? send(res, 200, { ok: true }) : send(res, 502, { error: "Versand fehlgeschlagen: " + (last?.error || "unbekannter Fehler") });
+  }
+  if (a === "mail-send") {
+    if (!mailOn()) return send(res, 400, { error: "Bitte zuerst den Mailserver einrichten" });
+    if (mailJob && !mailJob.done) return send(res, 409, { error: "Es läuft bereits ein Versand" });
+    const subject = String(d.subject || "").replace(/[\r\n]+/g, " ").trim().slice(0, 150), body = String(d.body || "").trim().slice(0, 20000);
+    if (!subject || !body) return send(res, 400, { error: "Bitte Betreff und Text eingeben" });
+    const kind = ["news", "all", "pro", "free", "me"].includes(d.audience) ? d.audience : "me";
+    if (kind === "me" && !user.email) return send(res, 400, { error: "Dein Konto hat keine E-Mail-Adresse" });
+    if (kind !== "me" && !mailAudience(kind).length) return send(res, 400, { error: "Für diese Auswahl gibt es keine Empfänger" });
+    return send(res, 200, { ok: true, job: mailAnnounce(req, subject, body, kind, user) });
   }
   if (a === "legal") {
     const L = d.legal || {}, cur = site.legal, def = Legal.DEFAULTS();
@@ -831,7 +957,7 @@ function exportCsv(res, h, kind) {
   res.end(body);
 }
 
-const DOCS = { osc: ["OSC", "docs/OSC.md"], api: ["API und Trigger", "docs/INTEGRATIONS.md"], companion: ["Companion-Modul", "integrations/companion/README.md"] };
+const DOCS = { osc: ["OSC", "docs/OSC.md"], api: ["API und Trigger", "docs/INTEGRATIONS.md"], companion: ["Companion-Modul", "integrations/companion/README.md"], mail: ["E-Mail", "docs/MAIL.md"] };
 function docsPage(res, name) {
   const d = DOCS[name]; if (!d) return page(res, 404, "Seite nicht gefunden", "Diese Anleitung gibt es nicht.");
   let md = ""; try { md = fs.readFileSync(path.join(__dirname, d[1]), "utf8"); } catch (_) { return page(res, 404, "Seite nicht gefunden", "Diese Anleitung gibt es nicht."); }
@@ -872,6 +998,14 @@ async function handle(req, res) {
   if (top === "impressum" || top === "datenschutz") return legalPage(req, res, url, top, user);
   if (top === "p") return memberPage(req, res, url, segs, user);
   if (top === "s") return sharePage(req, res, url, segs);
+  if (top === "unsubscribe") {
+    const u = userById(url.searchParams.get("u") || ""), t = String(url.searchParams.get("t") || "");
+    const ok = u && t.length === 32 && crypto.timingSafeEqual(Buffer.from(t), Buffer.from(unsubToken(u)));
+    if (ok) { u.mailNews = false; store.saveUsers(users); }
+    if (req.method === "POST") { res.writeHead(ok ? 200 : 400, { "Content-Type": "text/plain" }); return res.end(ok ? "ok" : "invalid"); }
+    return page(res, ok ? 200 : 400, ok ? "Abbestellt" : "Ungültiger Link", ok ? "Du bekommst keine Produktneuigkeiten von Tallycall mehr. Servicemitteilungen zu deinem Konto (zum Beispiel Passwort zurücksetzen) können weiterhin ankommen." : "Dieser Abmelde-Link ist nicht gültig.");
+  }
+  if (top === "forgot" || top === "reset") return !AUTH_ON ? redirect(res, "/app") : sendFile(res, path.join(PUB, "reset.html"));
   if (!top) return !AUTH_ON ? redirect(res, "/app") : sendFile(res, path.join(PUB, "index.html"));
   if (top === "login" || top === "signup") return user && AUTH_ON ? redirect(res, url.searchParams.get("next")?.startsWith("/") ? url.searchParams.get("next") : "/app") : !AUTH_ON ? redirect(res, "/app") : sendFile(res, path.join(PUB, "login.html"));
   if (top === "app" && segs.length === 1) return AUTH_ON && !user ? redirect(res, "/login?next=/app") : sendFile(res, path.join(PUB, "app.html"));

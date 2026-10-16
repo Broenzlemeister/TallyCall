@@ -31,6 +31,8 @@ jobs:
         run: node tools/test-companion.js
       - name: Lizenzen und geschützter Build (Schlüssel, Lizenzserver, Kundenversion)
         run: node tools/test-license.js
+      - name: E-Mail (SMTP-Client, Passwort zurücksetzen, Ankündigungen, Abmelden)
+        run: node tools/test-mail.js
 
   deploy:
     name: Deployment auf das VPS

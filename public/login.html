@@ -23,8 +23,11 @@ body { min-height:100vh; display:grid; grid-template-columns:minmax(340px,520px)
     <div id="nameRow" hidden><label for="name">Name</label><input id="name" autocomplete="name" placeholder="Anna Beispiel"></div>
     <label for="email">E-Mail</label><input id="email" type="email" autocomplete="email" placeholder="du@beispiel.de" required>
     <label for="pw">Passwort</label><input id="pw" type="password" autocomplete="current-password" placeholder="mindestens 8 Zeichen" required>
+    <div id="newsRow" hidden><label style="margin-top:14px;display:flex;gap:10px;align-items:flex-start;font-weight:400"><input type="checkbox" id="news" style="width:auto;margin-top:3px"><span>Produktneuigkeiten per E-Mail senden (optional, jederzeit abbestellbar)</span></label></div>
     <button class="primary lg" id="go" style="margin-top:16px">Anmelden</button>
   </form>
+  <p class="alt" id="fgRow" hidden><a href="/forgot">Passwort vergessen?</a></p>
+  <div class="err" id="okmsg" hidden style="background:#10241a;border-color:#1f4a33;color:#9be8bd"></div>
   <p class="alt" id="alt"></p>
   <p class="alt"><a href="/impressum">Impressum</a> · <a href="/datenschutz">Datenschutz</a></p>
 </main>
@@ -37,20 +40,22 @@ body { min-height:100vh; display:grid; grid-template-columns:minmax(340px,520px)
 <script>
 const $ = (i) => document.getElementById(i);
 const signup = location.pathname.startsWith("/signup"), next = new URLSearchParams(location.search).get("next");
-let allow = true;
+let allow = true, mailOn = false;
+if (new URLSearchParams(location.search).get("reset")) setTimeout(() => { $("okmsg").hidden = false; $("okmsg").textContent = I18N.t("Passwort geändert. Du kannst dich jetzt anmelden."); }, 0);
 function paint() {
   $("h").textContent = signup ? "Konto erstellen" : "Willkommen zurück";
   $("sub").textContent = signup ? "Starte jetzt. Danach legst du dein erstes Projekt an." : "Melde dich an, um deine Projekte zu öffnen.";
+  $("newsRow").hidden = !signup; $("fgRow").hidden = signup || !mailOn;
   $("nameRow").hidden = !signup; $("go").textContent = signup ? "Konto erstellen" : "Anmelden"; $("pw").autocomplete = signup ? "new-password" : "current-password";
   const q = next ? "?next=" + encodeURIComponent(next) : "";
   $("alt").innerHTML = signup ? `Schon ein Konto? <a href="/login${q}">Anmelden</a>` : (allow ? `Noch kein Konto? <a href="/signup${q}">Registrieren</a>` : "Die Registrierung ist auf diesem Server geschlossen. Bitte beim Admin um eine Einladung fragen.");
 }
-fetch("/api/config").then((r) => r.json()).then((c) => { allow = c.signup; if (signup && !allow) { $("err").hidden = false; $("err").textContent = "Die Registrierung ist auf diesem Server geschlossen."; $("go").disabled = true; } paint(); }).catch(paint);
+fetch("/api/config").then((r) => r.json()).then((c) => { allow = c.signup; mailOn = !!c.mail; if (signup && !allow) { $("err").hidden = false; $("err").textContent = "Die Registrierung ist auf diesem Server geschlossen."; $("go").disabled = true; } paint(); }).catch(paint);
 paint();
 $("f").addEventListener("submit", async (e) => {
   e.preventDefault(); $("err").hidden = true; $("go").disabled = true;
   try {
-    const r = await fetch("/api/" + (signup ? "signup" : "login"), { method: "POST", headers: { "Content-Type": "application/json", "x-cl": "1" }, body: JSON.stringify({ name: $("name").value, email: $("email").value, password: $("pw").value }) });
+    const r = await fetch("/api/" + (signup ? "signup" : "login"), { method: "POST", headers: { "Content-Type": "application/json", "x-cl": "1" }, body: JSON.stringify({ name: $("name").value, email: $("email").value, password: $("pw").value, news: $("news").checked, lang: I18N.lang }) });
     const j = await r.json();
     if (!r.ok) throw new Error(j.error || "Das hat nicht geklappt");
     location.href = next && next.startsWith("/") && !next.startsWith("//") ? next : "/app";
