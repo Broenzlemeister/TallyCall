@@ -15,7 +15,7 @@ require("../integrations/companion/main.js"); Module._load = load;
 
 async function boot(env) {
   const port = 5100 + Math.floor(Math.random() * 800), data = fs.mkdtempSync(path.join(os.tmpdir(), "tc-cm-"));
-  const srv = spawn("node", ["server.js"], { cwd: path.join(__dirname, ".."), env: { ...process.env, PORT: port, DATA_DIR: data, ...env }, stdio: "ignore" });
+  const srv = spawn("node", ["server.js"], { cwd: path.join(__dirname, ".."), env: { ...process.env, PORT: port, DATA_DIR: data, TALLYCALL_LANG: "de", ...env }, stdio: "ignore" });
   for (let i = 0; i < 50; i++) { try { if ((await fetch(`http://127.0.0.1:${port}/api/health`)).ok) break; } catch (_) {} await sleep(100); }
   return { port, U: `http://127.0.0.1:${port}`, srv, data };
 }

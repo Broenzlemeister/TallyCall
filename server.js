@@ -77,14 +77,16 @@ function addHost({ meta, state }) {
 }
 for (const p of store.loadProjects()) addHost(p);
 
-function newProject({ name, timezone, sample, template, owner }) {
-  const state = Engine.createState({ name, timezone, sample, template });
+const TplText = require("./lib/tplText");
+const tplLang = (l) => (TplText.MAP[l] ? l : "de");
+function newProject({ name, timezone, sample, template, owner, lang }) {
+  const state = TplText.localize(Engine.createState({ name, timezone, sample, template }), tplLang(lang));
   const meta = { id: auth.id(6), name, created: Date.now(), updated: Date.now(), members: owner && !owner.local ? [{ userId: owner.id, role: "admin" }] : [], invites: [], shares: [], audit: [], tokens: [] };
   const h = addHost({ meta, state });
   store.saveProject(h);
   return h;
 }
-if (!AUTH_ON && !hosts.size) newProject({ name: "Beispielshow", timezone: TZ_DEFAULT, sample: true });
+if (!AUTH_ON && !hosts.size) { const l = tplLang(process.env.TALLYCALL_LANG || "en"); newProject({ name: TplText.tr("Beispielshow", l), timezone: TZ_DEFAULT, sample: true, lang: l }); }
 
 const isMember = (h, user) => !!user && h.meta.members.some((m) => m.userId === user.id);
 // Der Server-Admin darf jedes Projekt öffnen und verwalten; alle anderen sehen nur ihre eigenen und geteilte Projekte
@@ -608,7 +610,7 @@ async function api(req, res, url, segs, user) {
     try { new Intl.DateTimeFormat("de", { timeZone: tz }); } catch (_) { tz = TZ_DEFAULT; }
     const tpl = ["conference", "concert", "empty"].includes(d.template) ? d.template : "";
     if (enforce(user) && isFinite(limits(user).content) && contentSec(Engine.createState({ name, timezone: tz, sample: !!d.sample, template: tpl })) > limits(user).content) return send(res, 402, { error: "Diese Vorlage hat mehr als 60 Minuten Inhalt. Im Free-Plan bitte „Leer“ wählen oder auf Pro wechseln." });
-    const h = newProject({ name, timezone: tz, sample: !!d.sample, template: tpl, owner: user });
+    const h = newProject({ name, timezone: tz, sample: !!d.sample, template: tpl, owner: user, lang: d.lang });
     return send(res, 200, { id: h.meta.id });
   }
   if (a === "admin") return siteAdminApi(req, res, segs.slice(1), user, url);

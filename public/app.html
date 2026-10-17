@@ -50,7 +50,7 @@ function newProject() {
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Berlin";
   modal("Neues Projekt", `<label style="margin-top:0">Name</label><input id="npName" placeholder="z. B. Sommerfest 2026" autofocus><label>Zeitzone der Show</label><input id="npTz" list="tzs" value="${E(tz)}"><datalist id="tzs"><option>Europe/Berlin<option>Europe/Vienna<option>Europe/Zurich<option>Europe/London<option>America/New_York<option>UTC</datalist>
     <label>Vorlage</label><select id="npTpl"><option value="empty">Leer</option><option value="conference"${projects.length || me.plan !== "pro" ? "" : " selected"}>Konferenz (Beispiel mit Gruppen, Pause, Cues)</option><option value="concert">Konzert / Live-Show (Aufbau, Einlass, Support, Hauptact)</option></select>`,
-    [{ label: "Abbrechen" }, { label: "Anlegen", cls: "primary", fn: async (close, bg) => { try { const r = await post("/api/projects", { name: bg.querySelector("#npName").value, timezone: bg.querySelector("#npTz").value, template: bg.querySelector("#npTpl").value }); location.href = "/p/" + r.id + "/"; } catch (e) { toast(e.message, true); } } }]);
+    [{ label: "Abbrechen" }, { label: "Anlegen", cls: "primary", fn: async (close, bg) => { try { const r = await post("/api/projects", { name: bg.querySelector("#npName").value, timezone: bg.querySelector("#npTz").value, template: bg.querySelector("#npTpl").value, lang: typeof I18N !== "undefined" ? I18N.lang : "de" }); location.href = "/p/" + r.id + "/"; } catch (e) { toast(e.message, true); } } }]);
 }
 function account() {
   if (me.local) return modal("Lokaler Modus", "<p>Dieser Server läuft ohne Konten. Jeder im Netzwerk hat vollen Zugriff.</p>", [{ label: "Schließen", cls: "primary" }]);
